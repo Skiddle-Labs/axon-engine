@@ -2,6 +2,7 @@ package search
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -519,6 +520,36 @@ func (e *Engine) quiescence(alpha, beta int) int {
 	return bestScore
 }
 
+func (e *Engine) getPV(depth int) string {
+	var pv []string
+	tempBoard := *e.Board
+	// Extract PV from Transposition Table
+	for i := 0; i < depth && i < 100; i++ {
+		_, move, found := e.TT.Probe(tempBoard.Hash, 0, -Infinity, Infinity, tempBoard.Ply)
+		if !found || move == engine.NoMove {
+			break
+		}
+
+		// Verify legality before adding to PV
+		ml := tempBoard.GenerateMoves()
+		legal := false
+		for j := 0; j < ml.Count; j++ {
+			if ml.Moves[j] == move {
+				if tempBoard.MakeMove(move) {
+					legal = true
+				}
+				break
+			}
+		}
+
+		if !legal {
+			break
+		}
+		pv = append(pv, move.String())
+	}
+	return strings.Join(pv, " ")
+}
+
 func (e *Engine) printInfo(depth, score int, bestMove engine.Move, multipv int) {
 	duration := time.Since(e.StartTime).Seconds()
 	nps := uint64(0)
@@ -532,17 +563,23 @@ func (e *Engine) printInfo(depth, score int, bestMove engine.Move, multipv int) 
 		multipvStr = fmt.Sprintf(" multipv %d", multipv)
 	}
 
+	hashfull := e.TT.HashFull()
+	pvStr := e.getPV(depth)
+	if pvStr == "" && bestMove != engine.NoMove {
+		pvStr = bestMove.String()
+	}
+
 	if score > MateScore-1000 {
 		mateIn := (MateScore - score + 1) / 2
-		fmt.Printf("info depth %d%s score mate %d nodes %d nps %d time %d pv %s\n",
-			depth, multipvStr, mateIn, nodes, nps, int(duration*1000), bestMove.String())
+		fmt.Printf("info depth %d%s score mate %d nodes %d nps %d hashfull %d time %d pv %s\n",
+			depth, multipvStr, mateIn, nodes, nps, hashfull, int(duration*1000), pvStr)
 	} else if score < -MateScore+1000 {
 		mateIn := (MateScore + score + 1) / 2
-		fmt.Printf("info depth %d%s score mate -%d nodes %d nps %d time %d pv %s\n",
-			depth, multipvStr, mateIn, nodes, nps, int(duration*1000), bestMove.String())
+		fmt.Printf("info depth %d%s score mate -%d nodes %d nps %d hashfull %d time %d pv %s\n",
+			depth, multipvStr, mateIn, nodes, nps, hashfull, int(duration*1000), pvStr)
 	} else {
-		fmt.Printf("info depth %d%s score cp %d nodes %d nps %d time %d pv %s\n",
-			depth, multipvStr, score, nodes, nps, int(duration*1000), bestMove.String())
+		fmt.Printf("info depth %d%s score cp %d nodes %d nps %d hashfull %d time %d pv %s\n",
+			depth, multipvStr, score, nodes, nps, hashfull, int(duration*1000), pvStr)
 	}
 }
 

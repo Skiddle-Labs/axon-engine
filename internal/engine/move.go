@@ -37,7 +37,18 @@ func (m Move) String() string {
 	if m == NoMove {
 		return "none"
 	}
-	return fmt.Sprintf("%s%s", m.From().String(), m.To().String())
+	s := fmt.Sprintf("%s%s", m.From().String(), m.To().String())
+	switch m.Flags() & 0xB000 {
+	case PromoKnight:
+		s += "n"
+	case PromoBishop:
+		s += "b"
+	case PromoRook:
+		s += "r"
+	case PromoQueen:
+		s += "q"
+	}
+	return s
 }
 
 // MoveList stores a collection of moves.

@@ -259,7 +259,7 @@ func (p *Protocol) handleGo(parts []string) {
 		}
 
 		if bestMove == engine.NoMove {
-			ml := p.board.GenerateMoves()
+			ml := e.Board.GenerateMoves()
 			if ml.Count > 0 {
 				bestMove = ml.Moves[0]
 			} else {
@@ -267,21 +267,32 @@ func (p *Protocol) handleGo(parts []string) {
 			}
 		}
 
-		moveStr := fmt.Sprintf("%s%s", bestMove.From().String(), bestMove.To().String())
-		if bestMove.Flags()&0x8000 != 0 {
-			switch bestMove.Flags() & 0xB000 {
-			case engine.PromoQueen:
-				moveStr += "q"
-			case engine.PromoRook:
-				moveStr += "r"
-			case engine.PromoBishop:
-				moveStr += "b"
-			case engine.PromoKnight:
-				moveStr += "n"
+		moveStr := bestMove.String()
+
+		// Get ponder move from TT
+		ponderMoveStr := ""
+		tempBoard := *e.Board
+		if tempBoard.MakeMove(bestMove) {
+			_, ponderMove, found := search.GlobalTT.Probe(tempBoard.Hash, 0, -search.Infinity, search.Infinity, tempBoard.Ply)
+			if found && ponderMove != engine.NoMove {
+				// Verify legality
+				ml := tempBoard.GenerateMoves()
+				for i := 0; i < ml.Count; i++ {
+					if ml.Moves[i] == ponderMove {
+						if tempBoard.MakeMove(ponderMove) {
+							ponderMoveStr = ponderMove.String()
+						}
+						break
+					}
+				}
 			}
 		}
 
-		p.send(fmt.Sprintf("bestmove %s", moveStr))
+		if ponderMoveStr != "" {
+			p.send(fmt.Sprintf("bestmove %s ponder %s", moveStr, ponderMoveStr))
+		} else {
+			p.send(fmt.Sprintf("bestmove %s", moveStr))
+		}
 	}(p.search, depth)
 }
 

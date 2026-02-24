@@ -126,6 +126,29 @@ func (tt *TranspositionTable) Probe(hash uint64, depth int, alpha, beta int, ply
 	return 0, engine.NoMove, false
 }
 
+// HashFull returns the percentage of the transposition table that is occupied, in permille (0 to 1000).
+func (tt *TranspositionTable) HashFull() int {
+	used := 0
+	count := 0
+	// Sample up to 1000 entries across shards for efficiency.
+	for i := 0; i < numShards && count < 1000; i++ {
+		shard := &tt.shards[i]
+		shard.RLock()
+		for j := 0; j < len(shard.entries) && count < 1000; j++ {
+			if shard.entries[j].Hash != 0 {
+				used++
+			}
+			count++
+		}
+		shard.RUnlock()
+	}
+
+	if count == 0 {
+		return 0
+	}
+	return (used * 1000) / count
+}
+
 // Clear wipes all entries from the transposition table.
 func (tt *TranspositionTable) Clear() {
 	for i := 0; i < numShards; i++ {
