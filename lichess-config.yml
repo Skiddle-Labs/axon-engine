@@ -1,0 +1,113 @@
+token: "INSERT_YOUR_TOKEN_HERE" # Lichess OAuth2 Token.
+url: "https://lichess.org/" # Lichess base URL.
+
+engine: # Engine settings.
+  dir: "./" # Directory containing the engine. This can be an absolute path or one relative to lichess-bot/.
+  name: "axon" # Binary name of the engine to use.
+  debug: False # When enabled, log all startup communication with the engine.
+  working_dir: "" # Directory where the chess engine will read and write files.
+  protocol: "uci" # "uci", "xboard" or "homemade"
+  ponder: false # Think on opponent's time. Axon currently does not support the ponder UCI command.
+
+  polyglot:
+    enabled: false # Activate polyglot book.
+    book:
+      standard:
+        - engines/book1.bin
+    min_weight: 1
+    selection: "weighted_random"
+    max_depth: 20
+    normalization: "none"
+
+  draw_or_resign:
+    resign_enabled: true # Whether or not the bot should resign.
+    resign_score: -1000 # If the score is less than or equal to this value, the bot resigns (in cp).
+    resign_for_egtb_minus_two: false
+    resign_moves: 4 # How many moves in a row the score has to be below the resign value.
+    offer_draw_enabled: true # Whether or not the bot should offer/accept draw.
+    offer_draw_score: 0 # If the absolute value of the score is less than or equal to this value, the bot offers/accepts draw (in cp).
+    offer_draw_for_egtb_zero: false
+    offer_draw_moves: 10 # How many moves in a row the absolute value of the score has to be below the draw value.
+    offer_draw_pieces: 10 # Only if the pieces on board are less than or equal to this value, the bot offers/accepts draw.
+
+  online_moves:
+    max_out_of_book_moves: 10
+    max_retries: 2
+    chessdb_book:
+      enabled: false
+    lichess_cloud_analysis:
+      enabled: false
+    lichess_opening_explorer:
+      enabled: false
+    online_egtb:
+      enabled: false
+
+  lichess_bot_tbs:
+    syzygy:
+      enabled: false
+    gaviota:
+      enabled: false
+
+  uci_options: # Arbitrary UCI options passed to the engine.
+    Hash: 512 # Max memory (in megabytes) the engine can allocate for the Transposition Table.
+    Threads: 4 # Number of threads for parallel search (Lazy SMP).
+    MultiPV: 1 # Number of principal variations to analyze.
+
+  silence_stderr: false
+
+abort_time: 30 # Time to abort a game in seconds when there is no activity.
+fake_think_time: false # Artificially slow down the bot to pretend like it's thinking.
+rate_limiting_delay: 0 # Time (in ms) to delay after sending a move to prevent "Too Many Requests" errors.
+move_overhead: 2000 # Increase if your bot flags games too often.
+max_takebacks_accepted: 0 # The number of times to allow an opponent to take back a move in a game.
+quit_after_all_games_finish: true
+
+correspondence:
+  move_time: 60
+  checkin_period: 300
+  disconnect_time: 150
+  ponder: false
+
+challenge: # Incoming challenges.
+  concurrency: 1 # Number of games to play simultaneously.
+  sort_by: "best"
+  preference: "none"
+  accept_bot: true
+  only_bot: false
+  max_increment: 20
+  min_increment: 0
+  max_base: 1800
+  min_base: 0
+  variants:
+    - standard
+  time_controls:
+    - bullet
+    - blitz
+    - rapid
+  modes:
+    - casual
+    - rated
+
+greeting:
+  hello: "Hi! I'm {me} (Axon Engine). Good luck!"
+  goodbye: "Good game!"
+  hello_spectators: "Hi! I'm {me}. I'm a Go-based chess engine."
+  goodbye_spectators: "Thanks for watching!"
+
+matchmaking:
+  allow_matchmaking: true
+  allow_during_games: false
+  challenge_variant: "standard"
+  challenge_timeout: 5
+  challenge_initial_time:
+    - 60
+    - 180
+    - 300
+  challenge_increment:
+    - 1
+    - 2
+  opponent_rating_difference: 500
+  rating_preference: "none"
+  challenge_mode: "rated"
+  challenge_filter: none
+  include_challenge_block_list: false

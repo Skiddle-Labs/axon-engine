@@ -50,11 +50,11 @@ func TestSearch_TranspositionTable(t *testing.T) {
 
 	// First search
 	searchEngine.Search(4)
-	nodes1 := searchEngine.Nodes
+	nodes1 := *searchEngine.Nodes
 
 	// Second search (should be much faster due to TT)
 	searchEngine.Search(4)
-	nodes2 := searchEngine.Nodes
+	nodes2 := *searchEngine.Nodes
 
 	if nodes2 >= nodes1 {
 		t.Errorf("Expected fewer nodes on second search due to TT. Nodes1: %d, Nodes2: %d", nodes1, nodes2)

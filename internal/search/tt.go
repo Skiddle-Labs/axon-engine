@@ -1,6 +1,7 @@
 package search
 
 import (
+	"sync"
 	"unsafe"
 
 	"github.com/personal-github/axon-engine/internal/engine"
@@ -14,38 +15,50 @@ const (
 
 // TTEntry represents a single record in the transposition table.
 type TTEntry struct {
-	Hash  uint64     // Zobrist hash of the position
+	Hash  uint64      // Zobrist hash of the position
 	Move  engine.Move // Best move found in this position
-	Score int16      // Evaluation score
-	Depth int8       // Depth of the search that produced this score
-	Flag  uint8      // Type of score (Exact, Alpha, or Beta)
+	Score int16       // Evaluation score
+	Depth int8        // Depth of the search that produced this score
+	Flag  uint8       // Type of score (Exact, Alpha, or Beta)
+}
+
+const numShards = 1024
+
+type ttShard struct {
+	sync.RWMutex
+	entries []TTEntry
 }
 
 // TranspositionTable is a fixed-size hash table for storing search results.
 type TranspositionTable struct {
-	Entries []TTEntry
-	Count   uint64
+	shards [numShards]ttShard
 }
 
 // NewTranspositionTable allocates a new TT with the specified size in Megabytes.
 func NewTranspositionTable(sizeMB int) *TranspositionTable {
 	sizePerEntry := uint64(unsafe.Sizeof(TTEntry{}))
-	numEntries := (uint64(sizeMB) * 1024 * 1024) / sizePerEntry
+	totalEntries := (uint64(sizeMB) * 1024 * 1024) / sizePerEntry
+	entriesPerShard := totalEntries / numShards
 
-	return &TranspositionTable{
-		Entries: make([]TTEntry, numEntries),
-		Count:   numEntries,
+	tt := &TranspositionTable{}
+	for i := 0; i < numShards; i++ {
+		tt.shards[i].entries = make([]TTEntry, entriesPerShard)
 	}
+	return tt
 }
 
 // Store saves a search result into the transposition table.
 func (tt *TranspositionTable) Store(hash uint64, depth int, score int, flag uint8, move engine.Move, ply int) {
-	if tt.Count == 0 {
+	shard := &tt.shards[hash%numShards]
+	shard.Lock()
+	defer shard.Unlock()
+
+	if len(shard.entries) == 0 {
 		return
 	}
 
-	index := hash % tt.Count
-	entry := &tt.Entries[index]
+	index := (hash / numShards) % uint64(len(shard.entries))
+	entry := &shard.entries[index]
 
 	// Adjust mate scores to be independent of the current search depth (ply)
 	// This allows the engine to recognize a mate found at different search branches.
@@ -70,12 +83,16 @@ func (tt *TranspositionTable) Store(hash uint64, depth int, score int, flag uint
 // Probe retrieves a search result from the transposition table if it exists.
 // Returns the score, best move, and a boolean indicating if a valid cut-off score was found.
 func (tt *TranspositionTable) Probe(hash uint64, depth int, alpha, beta int, ply int) (int, engine.Move, bool) {
-	if tt.Count == 0 {
+	shard := &tt.shards[hash%numShards]
+	shard.RLock()
+	defer shard.RUnlock()
+
+	if len(shard.entries) == 0 {
 		return 0, engine.NoMove, false
 	}
 
-	index := hash % tt.Count
-	entry := tt.Entries[index]
+	index := (hash / numShards) % uint64(len(shard.entries))
+	entry := shard.entries[index]
 
 	if entry.Hash == hash {
 		score := int(entry.Score)
@@ -111,7 +128,11 @@ func (tt *TranspositionTable) Probe(hash uint64, depth int, alpha, beta int, ply
 
 // Clear wipes all entries from the transposition table.
 func (tt *TranspositionTable) Clear() {
-	for i := range tt.Entries {
-		tt.Entries[i] = TTEntry{}
+	for i := 0; i < numShards; i++ {
+		tt.shards[i].Lock()
+		for j := range tt.shards[i].entries {
+			tt.shards[i].entries[j] = TTEntry{}
+		}
+		tt.shards[i].Unlock()
 	}
 }

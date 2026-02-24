@@ -6,6 +6,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/personal-github/axon-engine/internal/engine"
@@ -16,18 +17,22 @@ const startFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 // Protocol manages UCI protocol communication.
 type Protocol struct {
-	reader *bufio.Scanner
-	writer io.Writer
-	board  *engine.Board
-	search *search.Engine
+	reader  *bufio.Scanner
+	writer  io.Writer
+	board   *engine.Board
+	search  *search.Engine
+	threads int
+	multiPV int
 }
 
 // NewProtocol creates a new Protocol handler.
 func NewProtocol(input io.Reader, output io.Writer) *Protocol {
 	return &Protocol{
-		reader: bufio.NewScanner(input),
-		writer: output,
-		board:  engine.NewBoard(),
+		reader:  bufio.NewScanner(input),
+		writer:  output,
+		board:   engine.NewBoard(),
+		threads: 1,
+		multiPV: 1,
 	}
 }
 
@@ -71,6 +76,8 @@ func (p *Protocol) handleUCI() {
 	p.send("id name Axon Engine")
 	p.send("id author Axon Team")
 	p.send("option name Hash type spin default 64 min 1 max 1024")
+	p.send("option name Threads type spin default 1 min 1 max 128")
+	p.send("option name MultiPV type spin default 1 min 1 max 128")
 	p.send("uciok")
 }
 
@@ -157,10 +164,13 @@ func (p *Protocol) parseMove(moveStr string) engine.Move {
 
 func (p *Protocol) handleGo(parts []string) {
 	if p.search != nil {
-		p.search.Stopped = true
+		atomic.StoreInt32(p.search.Stopped, 1)
 	}
 
 	p.search = search.NewEngine(p.board)
+	p.search.Threads = p.threads
+	p.search.MultiPV = p.multiPV
+
 	depth := 64
 	var timeLimit time.Duration
 
@@ -253,7 +263,7 @@ func (p *Protocol) handleGo(parts []string) {
 
 func (p *Protocol) handleStop() {
 	if p.search != nil {
-		p.search.Stopped = true
+		atomic.StoreInt32(p.search.Stopped, 1)
 	}
 }
 
@@ -274,6 +284,14 @@ func (p *Protocol) handleSetOption(parts []string) {
 	if name == "hash" {
 		if size, err := strconv.Atoi(value); err == nil {
 			search.GlobalTT = search.NewTranspositionTable(size)
+		}
+	} else if name == "threads" {
+		if t, err := strconv.Atoi(value); err == nil {
+			p.threads = t
+		}
+	} else if name == "multipv" {
+		if m, err := strconv.Atoi(value); err == nil {
+			p.multiPV = m
 		}
 	}
 }

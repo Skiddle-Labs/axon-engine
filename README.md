@@ -11,10 +11,12 @@ Axon is a high-performance, tournament-grade chess engine written in Go (Golang)
 - **SEE (Static Exchange Evaluation)**: Accurately calculates the material balance of capture sequences to inform move ordering and pruning.
 
 ### Search Algorithms
+- **Parallel Search (Lazy SMP)**: Scalable search performance using multiple CPU cores. Helper threads populate a shared, sharded Transposition Table with depth-offset explorations to maximize tree coverage.
+- **MultiPV**: Analyzes multiple lines of play simultaneously, providing scores and PV strings for the top N moves.
 - **Principal Variation Search (PVS)**: Optimized Alpha-Beta pruning that focuses on the most promising move branch.
 - **Iterative Deepening**: Progressively deeper searches with real-time UCI feedback and time management.
 - **Quiescence Search**: Stabilizes evaluation by searching captures and checks at leaf nodes. Features **Delta Pruning** to skip low-impact captures and **Check Handling** to avoid tactical blind spots.
-- **Transposition Table (TT)**: Caches millions of search results with aging and replacement strategies to avoid redundant calculations.
+- **Transposition Table (TT)**: Sharded, thread-safe hash table that caches millions of search results to avoid redundant calculations.
 - **Pruning Heuristics**: 
     - **Null Move Pruning (NMP)**: Detects overwhelmingly strong positions to skip branches early.
     - **Late Move Reductions (LMR)**: Reduces search depth for moves deemed unlikely to improve the score.
@@ -60,6 +62,8 @@ Axon is a command-line engine. You can run it directly and type UCI commands, or
 - `position startpos moves e2e4 e7e5`: Setup a specific position.
 - `go depth 12`: Search to a specific depth.
 - `go wtime 300000 btime 300000`: Search with a time limit (e.g., 5 minutes).
+- `setoption name Threads value 4`: Use 4 CPU cores for search.
+- `setoption name MultiPV value 3`: Show the top 3 best moves.
 - `d`: Display the ASCII board, current evaluation, and hash status.
 
 ## Project Structure
