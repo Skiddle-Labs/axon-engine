@@ -67,6 +67,14 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 	atomic.StoreInt32(e.Stopped, 0)
 	globalBestMove := engine.NoMove
 
+	// Syzygy Tablebase Root Probe
+	if wdl, ok := GlobalTB.ProbeWDL(e.Board); ok {
+		// If we know the result from TB, we could potentially stop or adjust search.
+		// For now, we report the info and continue.
+		score := SyzygyScore(wdl, 0)
+		fmt.Printf("info string Syzygy TB found: wdl %d score %d\n", wdl, score)
+	}
+
 	// If SoftLimit is not explicitly set, use 60% of TimeLimit as a default.
 	if e.SoftLimit == 0 && e.TimeLimit > 0 {
 		e.SoftLimit = (e.TimeLimit * 6) / 10
@@ -286,13 +294,20 @@ func (e *Engine) negamax(depth, alpha, beta int, excludedMove engine.Move) int {
 		return 0
 	}
 
-	// 1. TT Probe
+	// 1. Syzygy Tablebase Probe
+	if excludedMove == engine.NoMove {
+		if wdl, ok := GlobalTB.ProbeWDL(e.Board); ok {
+			return SyzygyScore(wdl, e.Board.Ply)
+		}
+	}
+
+	// 2. TT Probe
 	ttScore, ttMove, found := e.TT.Probe(e.Board.Hash, depth, alpha, beta, e.Board.Ply)
 	if found && excludedMove == engine.NoMove {
 		return ttScore
 	}
 
-	// 2. Repetition Detection
+	// 3. Repetition Detection
 	for i := e.Board.Ply - 2; i >= e.Board.Ply-int(e.Board.HalfMoveClock); i -= 2 {
 		if i >= 0 && e.Board.History[i].Hash == e.Board.Hash {
 			return 0
@@ -501,6 +516,11 @@ func (e *Engine) quiescence(alpha, beta int) int {
 
 	if atomic.LoadInt32(e.Stopped) != 0 {
 		return 0
+	}
+
+	// Syzygy Tablebase Probe
+	if wdl, ok := GlobalTB.ProbeWDL(e.Board); ok {
+		return SyzygyScore(wdl, e.Board.Ply)
 	}
 
 	// TT Probe

@@ -29,6 +29,7 @@ type Protocol struct {
 	analyseMode      bool
 	isPondering      bool
 	pendingTimeLimit time.Duration
+	book             *engine.PolyglotBook
 }
 
 // NewProtocol creates a new Protocol handler.
@@ -98,6 +99,8 @@ func (p *Protocol) handleUCI() {
 	p.send("option name Clear Hash type button")
 	p.send("option name UCI_AnalyseMode type check default false")
 	p.send("option name UCI_Opponent type string")
+	p.send("option name Book File type string default <none>")
+	p.send("option name SyzygyPath type string default <none>")
 	p.send("uciok")
 }
 
@@ -183,6 +186,12 @@ func (p *Protocol) parseMove(moveStr string) engine.Move {
 }
 
 func (p *Protocol) handleGo(parts []string) {
+	// Probe opening book
+	if move, ok := p.book.GetMove(p.board); ok {
+		p.send(fmt.Sprintf("bestmove %s", move.String()))
+		return
+	}
+
 	if p.search != nil {
 		atomic.StoreInt32(p.search.Stopped, 1)
 	}
@@ -439,6 +448,28 @@ func (p *Protocol) handleSetOption(parts []string) {
 		p.analyseMode = value == "true"
 	} else if name == "uci_opponent" {
 		// Standard UCI option
+	} else if name == "book file" {
+		if p.book != nil {
+			p.book.Close()
+		}
+		if value != "<none>" && value != "" {
+			var err error
+			p.book, err = engine.OpenBook(value)
+			if err != nil {
+				p.send(fmt.Sprintf("info string Error opening book: %v", err))
+			}
+		} else {
+			p.book = nil
+		}
+	} else if name == "syzygypath" {
+		if search.GlobalTB != nil {
+			search.GlobalTB.Close()
+		}
+		if value != "<none>" && value != "" {
+			search.GlobalTB = search.NewTablebase(value)
+		} else {
+			search.GlobalTB = nil
+		}
 	}
 }
 
