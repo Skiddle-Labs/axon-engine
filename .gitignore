@@ -5,6 +5,8 @@
 *.so
 *.dylib
 axon-engine
+datagen
+tuner
 
 # Output of 'go build'
 /axon
@@ -27,3 +29,9 @@ vendor/
 # Config
 # lichess-config.yml might contain secrets, usually best to ignore or use a template
 # lichess-config.yml
+
+# External-data
+/external-data
+
+# Training and test data
+*.epd

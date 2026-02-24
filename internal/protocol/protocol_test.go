@@ -30,6 +30,10 @@ func TestProtocol_Handshake(t *testing.T) {
 		"option name Clear Hash type button",
 		"option name UCI_AnalyseMode type check default false",
 		"option name UCI_Opponent type string",
+		"option name Book File type string default <none>",
+		"option name Book Best Move type check default false",
+		"option name Book Depth type spin default 255 min 0 max 255",
+		"option name SyzygyPath type string default <none>",
 		"uciok",
 		"readyok",
 	}
@@ -116,6 +120,16 @@ func TestProtocol_SetOptionValues(t *testing.T) {
 	p.handleSetOption([]string{"setoption", "name", "Move", "Overhead", "value", "50"})
 	if p.moveOverhead != 50 {
 		t.Fatalf("expected Move Overhead to be 50, got %d", p.moveOverhead)
+	}
+
+	p.handleSetOption([]string{"setoption", "name", "Book", "Best", "Move", "value", "true"})
+	if !p.bookBestMove {
+		t.Fatal("expected Book Best Move to be true")
+	}
+
+	p.handleSetOption([]string{"setoption", "name", "Book", "Depth", "value", "10"})
+	if p.bookDepth != 10 {
+		t.Fatalf("expected Book Depth to be 10, got %d", p.bookDepth)
 	}
 }
 

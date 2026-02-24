@@ -45,10 +45,16 @@ func init() {
 	polyglotTurnKey = getNext()
 }
 
+// BookOptions defines settings for book probing.
+type BookOptions struct {
+	BestMove bool // If true, always pick the move with the highest weight
+}
+
 // PolyglotBook handles reading Polyglot .bin files.
 type PolyglotBook struct {
-	file *os.File
-	size int64
+	file    *os.File
+	size    int64
+	Options BookOptions
 }
 
 // OpenBook opens a Polyglot .bin file.
@@ -88,6 +94,19 @@ func (b *PolyglotBook) GetMove(board *Board) (Move, bool) {
 	entries := b.findEntries(hash)
 	if len(entries) == 0 {
 		return NoMove, false
+	}
+
+	// If BestMove is set, pick the move with the highest weight.
+	if b.Options.BestMove {
+		bestIdx := 0
+		maxWeight := uint16(0)
+		for i, e := range entries {
+			if e.Weight > maxWeight {
+				maxWeight = e.Weight
+				bestIdx = i
+			}
+		}
+		return b.parsePolyglotMove(board, entries[bestIdx].RawMove), true
 	}
 
 	// Simple weighted random selection

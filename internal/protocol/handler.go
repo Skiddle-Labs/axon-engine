@@ -30,6 +30,8 @@ type Protocol struct {
 	isPondering      bool
 	pendingTimeLimit time.Duration
 	book             *engine.PolyglotBook
+	bookBestMove     bool
+	bookDepth        int
 }
 
 // NewProtocol creates a new Protocol handler.
@@ -42,6 +44,7 @@ func NewProtocol(input io.Reader, output io.Writer) *Protocol {
 		multiPV:      1,
 		moveOverhead: 10,
 		slowMover:    100,
+		bookDepth:    255,
 	}
 }
 
@@ -100,6 +103,8 @@ func (p *Protocol) handleUCI() {
 	p.send("option name UCI_AnalyseMode type check default false")
 	p.send("option name UCI_Opponent type string")
 	p.send("option name Book File type string default <none>")
+	p.send("option name Book Best Move type check default false")
+	p.send("option name Book Depth type spin default 255 min 0 max 255")
 	p.send("option name SyzygyPath type string default <none>")
 	p.send("uciok")
 }
@@ -187,9 +192,11 @@ func (p *Protocol) parseMove(moveStr string) engine.Move {
 
 func (p *Protocol) handleGo(parts []string) {
 	// Probe opening book
-	if move, ok := p.book.GetMove(p.board); ok {
-		p.send(fmt.Sprintf("bestmove %s", move.String()))
-		return
+	if p.board.Ply <= p.bookDepth {
+		if move, ok := p.book.GetMove(p.board); ok {
+			p.send(fmt.Sprintf("bestmove %s", move.String()))
+			return
+		}
 	}
 
 	if p.search != nil {
@@ -457,9 +464,20 @@ func (p *Protocol) handleSetOption(parts []string) {
 			p.book, err = engine.OpenBook(value)
 			if err != nil {
 				p.send(fmt.Sprintf("info string Error opening book: %v", err))
+			} else if p.book != nil {
+				p.book.Options.BestMove = p.bookBestMove
 			}
 		} else {
 			p.book = nil
+		}
+	} else if name == "book best move" {
+		p.bookBestMove = value == "true"
+		if p.book != nil {
+			p.book.Options.BestMove = p.bookBestMove
+		}
+	} else if name == "book depth" {
+		if v, err := strconv.Atoi(value); err == nil {
+			p.bookDepth = v
 		}
 	} else if name == "syzygypath" {
 		if search.GlobalTB != nil {

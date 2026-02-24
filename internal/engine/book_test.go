@@ -123,3 +123,19 @@ func TestBook_ParseMove(t *testing.T) {
 		t.Errorf("Expected DoublePawnPush flag, got %x", move.Flags())
 	}
 }
+
+// TestBook_BestMove verifies that the BestMove option can be configured.
+func TestBook_BestMove(t *testing.T) {
+	book := &PolyglotBook{}
+
+	// Verify default is false
+	if book.Options.BestMove {
+		t.Error("BestMove should default to false")
+	}
+
+	// Verify it can be enabled
+	book.Options.BestMove = true
+	if !book.Options.BestMove {
+		t.Error("BestMove should be true after setting")
+	}
+}

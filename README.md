@@ -64,6 +64,8 @@ Axon can be configured using the `setoption name <Name> value <Value>` command.
 - **Threads**: Number of search threads (Default: 1, Max: 128).
 - **Book File**: Path to a **Polyglot (.bin)** opening book.
     - `setoption name Book File value C:\books\pro.bin`
+- **Book Best Move**: If true, the engine picks the move with highest weight from the book (Default: false).
+- **Book Depth**: Maximum ply count for book usage (Default: 255).
 - **SyzygyPath**: Path to the directory containing **Syzygy Tablebases** (.rtbw files).
     - `setoption name SyzygyPath value C:\syzygy\3-4-5`
 - **Move Overhead**: Time buffer in ms to account for network/GUI lag (Default: 10).
@@ -74,6 +76,7 @@ Axon can be configured using the `setoption name <Name> value <Value>` command.
 - `/internal/engine`: Bitboards, Move Generation, Book Probing, and Zobrist Hashing.
 - `/internal/search`: PVS logic, Syzygy integration, and Pruning Heuristics.
 - `/internal/eval`: Tapered evaluation, PSTs, and Positional Heuristics.
+- `/cmd/datagen`: Self-play tool for generating tuning data with opening book support.
 - `/cmd/tuner`: Automated evaluation tuning using the Texel Method.
 
 ## License
