@@ -146,7 +146,7 @@ func runTuning(entries []Entry, k float64) {
 		improved := false
 		fmt.Printf("Iteration %d | Current MSE: %.10f\n", iteration, bestMSE)
 
-		for i, p := range params {
+		for _, p := range params {
 			oldVal := *p
 
 			// Try increasing
@@ -228,5 +228,5 @@ func printParams(params []*int, names []string) {
 			fmt.Printf("%s: %d\n", names[i], *params[i])
 		}
 	}
-	fmt.Println("--------------------------------\n")
+	fmt.Println("--------------------------------")
 }
