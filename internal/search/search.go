@@ -70,7 +70,30 @@ func (e *Engine) Search(maxDepth int) board.Move {
 					continue
 				}
 
-				s := -e.negamax(depth-1, -beta, -currAlpha)
+				var s int
+				if i == 0 {
+					// Full search for first move
+					s = -e.negamax(depth-1, -beta, -currAlpha)
+				} else {
+					// LMR at root (mild)
+					reduction := 0
+					if depth >= 3 && i >= 6 && move.Flags()&board.CaptureFlag == 0 && move.Flags()&0x8000 == 0 {
+						reduction = 1
+					}
+
+					// Principal Variation Search (PVS) with null window
+					s = -e.negamax(depth-1-reduction, -(currAlpha + 1), -currAlpha)
+
+					// Re-search if reduced move beats alpha
+					if s > currAlpha && reduction > 0 {
+						s = -e.negamax(depth-1, -(currAlpha + 1), -currAlpha)
+					}
+					// Re-search with full window if null window search beats alpha
+					if s > currAlpha && s < beta {
+						s = -e.negamax(depth-1, -beta, -currAlpha)
+					}
+				}
+
 				e.Board.UnmakeMove(move)
 
 				if e.Stopped {
@@ -161,6 +184,13 @@ func (e *Engine) negamax(depth, alpha, beta int) int {
 		return ttScore
 	}
 
+	// 2. Repetition Detection
+	for i := e.Board.Ply - 2; i >= e.Board.Ply-int(e.Board.HalfMoveClock); i -= 2 {
+		if i >= 0 && e.Board.History[i].Hash == e.Board.Hash {
+			return 0
+		}
+	}
+
 	inCheck := e.Board.IsSquareAttacked(e.Board.Pieces[e.Board.SideToMove][board.King].LSB(), e.Board.SideToMove^1)
 	if inCheck {
 		depth++
@@ -184,9 +214,17 @@ func (e *Engine) negamax(depth, alpha, beta int) int {
 		}
 	}
 
+	// Internal Iterative Deepening (IID)
+	// If we don't have a best move from the TT, perform a shallow search to find one.
+	if depth >= 5 && ttMove == board.NoMove {
+		e.negamax(depth-2, alpha, beta)
+		_, ttMove, _ = e.TT.Probe(e.Board.Hash, depth, alpha, beta, e.Board.Ply)
+	}
+
 	alphaOrig := alpha
 	bestMove := board.NoMove
 	bestScore := -Infinity
+	standingPat := eval.Evaluate(e.Board)
 
 	ml := e.Board.GenerateMoves()
 	e.orderMoves(&ml, ttMove)
@@ -194,13 +232,58 @@ func (e *Engine) negamax(depth, alpha, beta int) int {
 	legalMoves := 0
 	for i := 0; i < ml.Count; i++ {
 		move := ml.Moves[i]
+
+		// Futility Pruning: Skip quiet moves at low depth if they can't improve alpha
+		if depth <= 3 && !inCheck && i > 0 && move.Flags()&board.CaptureFlag == 0 && move.Flags()&0x8000 == 0 {
+			if standingPat+depth*150 < alpha {
+				continue
+			}
+		}
+
+		// Bad Capture Pruning: skip captures that lose material at low depths
+		if depth <= 2 && !inCheck && move.Flags()&board.CaptureFlag != 0 && e.Board.SEE(move) < 0 {
+			continue
+		}
+
 		if !e.Board.MakeMove(move) {
 			continue
 		}
 
 		legalMoves++
-		score := -e.negamax(depth-1, -beta, -alpha)
+
+		var score int
+		if i == 0 {
+			// Principal Variation move, search with full window
+			score = -e.negamax(depth-1, -beta, -alpha)
+		} else {
+			// Late Move Reductions (LMR)
+			reduction := 0
+			if depth >= 3 && i >= 4 && !inCheck && move.Flags()&board.CaptureFlag == 0 && move.Flags()&0x8000 == 0 {
+				reduction = 1
+				if i >= 10 {
+					reduction = 2
+				}
+			}
+
+			// Principal Variation Search (PVS) with null window
+			score = -e.negamax(depth-1-reduction, -(alpha + 1), -alpha)
+
+			// Re-search if reduced move beats alpha
+			if score > alpha && reduction > 0 {
+				score = -e.negamax(depth-1, -(alpha + 1), -alpha)
+			}
+
+			// Re-search with full window if null window search beats alpha
+			if score > alpha && score < beta {
+				score = -e.negamax(depth-1, -beta, -alpha)
+			}
+		}
+
 		e.Board.UnmakeMove(move)
+
+		if e.Stopped {
+			return 0
+		}
 
 		if score > bestScore {
 			bestScore = score
@@ -285,6 +368,11 @@ func (e *Engine) quiescence(alpha, beta int) int {
 			continue
 		}
 
+		// SEE Pruning: Don't search losing captures in quiescence
+		if e.Board.SEE(move) < 0 {
+			continue
+		}
+
 		if !e.Board.MakeMove(move) {
 			continue
 		}
@@ -339,8 +427,12 @@ func (e *Engine) orderMoves(ml *board.MoveList, ttMove board.Move) {
 				victim = board.Pawn
 			}
 
-			// Prioritize captures using MVV-LVA
-			scores[i] = 20000 + mvvLva[victim][attacker]
+			// Prioritize winning/equal captures using SEE
+			if e.Board.SEE(move) >= 0 {
+				scores[i] = 25000 + mvvLva[victim][attacker]
+			} else {
+				scores[i] = 11000 + mvvLva[victim][attacker]
+			}
 		} else if flags&0x8000 != 0 {
 			// Prioritize promotions
 			scores[i] = 15000
