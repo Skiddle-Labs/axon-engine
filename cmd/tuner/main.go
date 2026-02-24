@@ -207,6 +207,16 @@ func getTunableParams() ([]*int, []string) {
 		}
 	}
 
+	// King Safety
+	for pt := engine.Knight; pt <= engine.Queen; pt++ {
+		params = append(params, &eval.KingAttackerWeight[pt])
+		names = append(names, fmt.Sprintf("KingAttackerWeight[%s]", typeNames[pt]))
+	}
+	for i := 0; i < 100; i++ {
+		params = append(params, &eval.SafetyTable[i])
+		names = append(names, fmt.Sprintf("SafetyTable[%d]", i))
+	}
+
 	return params, names
 }
 
