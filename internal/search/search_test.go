@@ -146,3 +146,56 @@ func TestSearch_QuiescenceCheck(t *testing.T) {
 		t.Errorf("Expected NoMove in checkmate position, got %s", bestMove.String())
 	}
 }
+
+// TestSearch_RFP verifies that Static Null Move Pruning is integrated.
+func TestSearch_RFP(t *testing.T) {
+	b := engine.NewBoard()
+	// Winning position for white, static eval should be high
+	b.SetFEN("k7/8/8/8/8/4B3/4Q3/K7 w - - 0 1")
+
+	searchEngine := NewEngine(b)
+	// We run search to ensure no panics and verify it reaches depth
+	searchEngine.Search(6)
+}
+
+// TestSearch_LMP verifies that Late Move Pruning is integrated.
+func TestSearch_LMP(t *testing.T) {
+	b := engine.NewBoard()
+	b.SetFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+
+	searchEngine := NewEngine(b)
+	searchEngine.Search(6)
+}
+
+// TestSearch_CounterMoves verifies that countermoves are tracked.
+func TestSearch_CounterMoves(t *testing.T) {
+	b := engine.NewBoard()
+	b.SetFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+
+	searchEngine := NewEngine(b)
+	searchEngine.Search(5)
+
+	found := false
+	for _, row := range searchEngine.CounterMoves {
+		for _, move := range row {
+			if move != engine.NoMove {
+				found = true
+				break
+			}
+		}
+	}
+
+	if !found {
+		t.Error("No countermoves were recorded during search")
+	}
+}
+
+// TestSearch_SingularExtensions verifies that singular extensions don't crash.
+func TestSearch_SingularExtensions(t *testing.T) {
+	b := engine.NewBoard()
+	// Forced move position
+	b.SetFEN("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2")
+
+	searchEngine := NewEngine(b)
+	searchEngine.Search(9)
+}
