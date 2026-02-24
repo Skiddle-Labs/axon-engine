@@ -6,6 +6,17 @@ import (
 	"strings"
 )
 
+type CastlingRights uint8
+
+// State represents the irreversible state of the board, used for unmaking moves.
+type State struct {
+	EnPassant     Square
+	Castling      CastlingRights
+	HalfMoveClock uint8
+	CapturedPiece Piece
+	Hash          uint64
+}
+
 // Board represents the state of a chess game.
 // It uses bitboards to store the positions of all pieces.
 type Board struct {
@@ -19,10 +30,15 @@ type Board struct {
 	SideToMove Color
 	EnPassant  Square
 	Castling   CastlingRights
+	Hash       uint64
 
 	// History and counters
 	HalfMoveClock  uint8
 	FullMoveNumber uint16
+
+	// History for unmaking moves
+	History [1024]State
+	Ply     int
 }
 
 // Bitboard constants for castling rights
@@ -32,8 +48,6 @@ const (
 	BlackKingside
 	BlackQueenside
 )
-
-type CastlingRights uint8
 
 // NewBoard creates a new Board with an empty state.
 func NewBoard() *Board {
@@ -184,6 +198,8 @@ func (b *Board) SetFEN(fen string) error {
 		b.FullMoveNumber = 1
 	}
 
+	b.Hash = b.ComputeHash()
+
 	return nil
 }
 
@@ -196,6 +212,8 @@ func (b *Board) Clear() {
 	b.Castling = 0
 	b.HalfMoveClock = 0
 	b.FullMoveNumber = 1
+	b.Ply = 0
+	b.Hash = 0
 }
 
 func pieceFromChar(c rune) (Piece, Color, PieceType) {

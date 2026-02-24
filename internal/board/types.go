@@ -41,6 +41,26 @@ const (
 	BlackKing
 )
 
+func (p Piece) Color() Color {
+	if p == NoPiece {
+		return NoColor
+	}
+	if p <= WhiteKing {
+		return White
+	}
+	return Black
+}
+
+func (p Piece) Type() PieceType {
+	if p == NoPiece {
+		return None
+	}
+	if p <= WhiteKing {
+		return PieceType(p)
+	}
+	return PieceType(p - 6)
+}
+
 // PieceType returns the type of the piece regardless of color.
 type PieceType int8
 

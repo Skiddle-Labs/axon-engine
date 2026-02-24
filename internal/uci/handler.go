@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/personal-github/axon-engine/internal/board"
+	"github.com/personal-github/axon-engine/internal/search"
 )
 
 const startFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -45,6 +47,8 @@ func (h *Handler) Start() {
 			h.handleIsReady()
 		case "position":
 			h.handlePosition(parts)
+		case "go":
+			h.handleGo(parts)
 		case "d":
 			h.handleDisplay()
 		case "quit":
@@ -99,8 +103,89 @@ func (h *Handler) handlePosition(parts []string) {
 	h.board.SetFEN(fen)
 
 	if moveIndex != -1 {
-		// TODO: Implement move application
+		for i := moveIndex + 1; i < len(parts); i++ {
+			move := h.parseMove(parts[i])
+			if move != board.NoMove {
+				h.board.MakeMove(move)
+			}
+		}
 	}
+}
+
+func (h *Handler) parseMove(moveStr string) board.Move {
+	ml := h.board.GenerateMoves()
+	for i := 0; i < ml.Count; i++ {
+		m := ml.Moves[i]
+
+		// Verify legality by making and unmaking the move
+		if !h.board.MakeMove(m) {
+			continue
+		}
+		h.board.UnmakeMove(m)
+
+		s := fmt.Sprintf("%s%s", m.From().String(), m.To().String())
+
+		if len(moveStr) == 5 {
+			var p string
+			switch m.Flags() & 0xB000 {
+			case board.PromoQueen:
+				p = "q"
+			case board.PromoRook:
+				p = "r"
+			case board.PromoBishop:
+				p = "b"
+			case board.PromoKnight:
+				p = "n"
+			}
+			if s+p == moveStr {
+				return m
+			}
+		} else if s == moveStr {
+			return m
+		}
+	}
+	return board.NoMove
+}
+
+func (h *Handler) handleGo(parts []string) {
+	engine := search.NewEngine(h.board)
+	depth := 6
+
+	for i := 1; i < len(parts); i++ {
+		switch parts[i] {
+		case "depth":
+			if i+1 < len(parts) {
+				if d, err := strconv.Atoi(parts[i+1]); err == nil {
+					depth = d
+				}
+				i++
+			}
+		case "infinite":
+			depth = 64
+		}
+	}
+
+	bestMove := engine.Search(depth)
+
+	if bestMove == board.NoMove {
+		return
+	}
+
+	moveStr := fmt.Sprintf("%s%s", bestMove.From().String(), bestMove.To().String())
+	if bestMove.Flags()&0x8000 != 0 {
+		switch bestMove.Flags() & 0xB000 {
+		case board.PromoQueen:
+			moveStr += "q"
+		case board.PromoRook:
+			moveStr += "r"
+		case board.PromoBishop:
+			moveStr += "b"
+		case board.PromoKnight:
+			moveStr += "n"
+		}
+	}
+
+	h.send(fmt.Sprintf("bestmove %s", moveStr))
 }
 
 func (h *Handler) handleDisplay() {
