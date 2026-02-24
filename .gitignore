@@ -1,0 +1,29 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+axon-engine
+
+# Output of 'go build'
+/axon
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Go specific
+vendor/
+*.test
+*.out
+
+# Config
+# lichess-config.yml might contain secrets, usually best to ignore or use a template
+# lichess-config.yml
