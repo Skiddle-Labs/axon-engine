@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/personal-github/axon-engine/internal/search"
 )
@@ -23,6 +24,8 @@ func TestProtocol_Handshake(t *testing.T) {
 		"option name Hash type spin default 64 min 1 max 1024",
 		"option name Threads type spin default 1 min 1 max 128",
 		"option name MultiPV type spin default 1 min 1 max 128",
+		"option name Ponder type check default false",
+		"option name Move Overhead type spin default 10 min 0 max 5000",
 		"uciok",
 		"readyok",
 	}
@@ -105,6 +108,11 @@ func TestProtocol_SetOptionValues(t *testing.T) {
 	if search.GlobalTT == oldTT {
 		t.Fatal("expected Hash setoption to replace the transposition table")
 	}
+
+	p.handleSetOption([]string{"setoption", "name", "Move", "Overhead", "value", "50"})
+	if p.moveOverhead != 50 {
+		t.Fatalf("expected Move Overhead to be 50, got %d", p.moveOverhead)
+	}
 }
 
 func TestProtocol_SetOptionInvalidTokens(t *testing.T) {
@@ -139,5 +147,24 @@ func TestProtocol_ParseMove(t *testing.T) {
 	// Verify e5 pawn
 	if !strings.Contains(got, "5 | . | . | . | . | p | . | . | . |") {
 		t.Error("Black pawn not found on e5 after 'moves e7e5'")
+	}
+}
+
+func TestProtocol_PonderLogic(t *testing.T) {
+	input := "uci\nisready\nposition startpos\ngo ponder wtime 100000 btime 100000\nponderhit\nstop\nquit\n"
+	var output bytes.Buffer
+	p := NewProtocol(strings.NewReader(input), &output)
+
+	done := make(chan bool)
+	go func() {
+		p.Start()
+		done <- true
+	}()
+
+	select {
+	case <-done:
+		// Success
+	case <-time.After(2 * time.Second):
+		t.Fatal("Protocol loop timed out during ponder test")
 	}
 }

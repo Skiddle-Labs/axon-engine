@@ -17,22 +17,26 @@ const startFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 
 // Protocol manages UCI protocol communication.
 type Protocol struct {
-	reader  *bufio.Scanner
-	writer  io.Writer
-	board   *engine.Board
-	search  *search.Engine
-	threads int
-	multiPV int
+	reader           *bufio.Scanner
+	writer           io.Writer
+	board            *engine.Board
+	search           *search.Engine
+	threads          int
+	multiPV          int
+	moveOverhead     int
+	isPondering      bool
+	pendingTimeLimit time.Duration
 }
 
 // NewProtocol creates a new Protocol handler.
 func NewProtocol(input io.Reader, output io.Writer) *Protocol {
 	return &Protocol{
-		reader:  bufio.NewScanner(input),
-		writer:  output,
-		board:   engine.NewBoard(),
-		threads: 1,
-		multiPV: 1,
+		reader:       bufio.NewScanner(input),
+		writer:       output,
+		board:        engine.NewBoard(),
+		threads:      1,
+		multiPV:      1,
+		moveOverhead: 10,
 	}
 }
 
@@ -58,6 +62,8 @@ func (p *Protocol) Start() {
 			p.handleGo(parts)
 		case "stop":
 			p.handleStop()
+		case "ponderhit":
+			p.handlePonderHit()
 		case "ucinewgame":
 			p.handleUCINewGame()
 		case "setoption":
@@ -78,6 +84,8 @@ func (p *Protocol) handleUCI() {
 	p.send("option name Hash type spin default 64 min 1 max 1024")
 	p.send("option name Threads type spin default 1 min 1 max 128")
 	p.send("option name MultiPV type spin default 1 min 1 max 128")
+	p.send("option name Ponder type check default false")
+	p.send("option name Move Overhead type spin default 10 min 0 max 5000")
 	p.send("uciok")
 }
 
@@ -170,6 +178,8 @@ func (p *Protocol) handleGo(parts []string) {
 	p.search = search.NewEngine(p.board)
 	p.search.Threads = p.threads
 	p.search.MultiPV = p.multiPV
+	p.isPondering = false
+	p.pendingTimeLimit = 0
 
 	depth := 64
 	var timeLimit time.Duration
@@ -180,6 +190,8 @@ func (p *Protocol) handleGo(parts []string) {
 
 	for i := 1; i < len(parts); i++ {
 		switch parts[i] {
+		case "ponder":
+			p.isPondering = true
 		case "depth":
 			if i+1 < len(parts) {
 				if d, err := strconv.Atoi(parts[i+1]); err == nil {
@@ -224,15 +236,27 @@ func (p *Protocol) handleGo(parts []string) {
 	}
 
 	if timeLimit > 0 {
-		timeLimit -= 50 * time.Millisecond
+		timeLimit -= time.Duration(p.moveOverhead) * time.Millisecond
 		if timeLimit < 10*time.Millisecond {
 			timeLimit = 10 * time.Millisecond
 		}
-		p.search.TimeLimit = timeLimit
+
+		if !p.isPondering {
+			p.search.TimeLimit = timeLimit
+		} else {
+			p.pendingTimeLimit = timeLimit
+		}
 	}
 
 	go func(e *search.Engine, d int) {
 		bestMove := e.Search(d)
+
+		for p.isPondering {
+			time.Sleep(10 * time.Millisecond)
+			if atomic.LoadInt32(e.Stopped) != 0 {
+				break
+			}
+		}
 
 		if bestMove == engine.NoMove {
 			ml := p.board.GenerateMoves()
@@ -262,8 +286,20 @@ func (p *Protocol) handleGo(parts []string) {
 }
 
 func (p *Protocol) handleStop() {
+	p.isPondering = false
 	if p.search != nil {
 		atomic.StoreInt32(p.search.Stopped, 1)
+	}
+}
+
+func (p *Protocol) handlePonderHit() {
+	if !p.isPondering {
+		return
+	}
+	p.isPondering = false
+	if p.search != nil && p.pendingTimeLimit > 0 {
+		p.search.TimeLimit = p.pendingTimeLimit
+		p.search.StartTime = time.Now()
 	}
 }
 
@@ -274,12 +310,38 @@ func (p *Protocol) handleUCINewGame() {
 }
 
 func (p *Protocol) handleSetOption(parts []string) {
-	if len(parts) < 5 || parts[1] != "name" || parts[3] != "value" {
-		return
+	namePart := ""
+	valuePart := ""
+	parsingName := false
+	parsingValue := false
+
+	for i := 0; i < len(parts); i++ {
+		if parts[i] == "name" {
+			parsingName = true
+			parsingValue = false
+			continue
+		}
+		if parts[i] == "value" {
+			parsingName = false
+			parsingValue = true
+			continue
+		}
+
+		if parsingName {
+			if namePart != "" {
+				namePart += " "
+			}
+			namePart += parts[i]
+		} else if parsingValue {
+			if valuePart != "" {
+				valuePart += " "
+			}
+			valuePart += parts[i]
+		}
 	}
 
-	name := strings.ToLower(parts[2])
-	value := parts[4]
+	name := strings.ToLower(namePart)
+	value := valuePart
 
 	if name == "hash" {
 		if size, err := strconv.Atoi(value); err == nil {
@@ -292,6 +354,10 @@ func (p *Protocol) handleSetOption(parts []string) {
 	} else if name == "multipv" {
 		if m, err := strconv.Atoi(value); err == nil {
 			p.multiPV = m
+		}
+	} else if name == "move overhead" {
+		if v, err := strconv.Atoi(value); err == nil {
+			p.moveOverhead = v
 		}
 	}
 }
