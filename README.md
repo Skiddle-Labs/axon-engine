@@ -49,11 +49,22 @@ cd axon-engine
 go build -o axon main.go
 ```
 
+### Windows Build
+```bat
+git clone https://github.com/personal-github/axon-engine.git
+cd axon-engine
+go build -o axon.exe main.go
+```
+
 ### Usage
 Axon is a command-line engine. You can run it directly and type UCI commands, or connect it to a GUI like Arena, Cute Chess, or Banksia.
 
 ```bash
 ./axon
+```
+
+```bat
+axon.exe
 ```
 
 **Common Commands:**
@@ -65,6 +76,18 @@ Axon is a command-line engine. You can run it directly and type UCI commands, or
 - `setoption name Threads value 4`: Use 4 CPU cores for search.
 - `setoption name MultiPV value 3`: Show the top 3 best moves.
 - `d`: Display the ASCII board, current evaluation, and hash status.
+
+**UCI Options (via `setoption`):**
+- `Hash`: Transposition table size in MB (default 64, min 1, max 1024).
+- `Threads`: Number of search threads (default 1, min 1, max 128).
+- `MultiPV`: Number of principal variations (default 1, min 1, max 128).
+
+Example:
+```bash
+setoption name Hash value 128
+setoption name Threads value 4
+setoption name MultiPV value 3
+```
 
 ## Project Structure
 - `/internal/engine`: Bitboards, Move Generation, SEE, and Zobrist Hashing.

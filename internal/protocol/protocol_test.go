@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/personal-github/axon-engine/internal/search"
 )
 
 // TestProtocol_Handshake tests the basic UCI initialization sequence.
@@ -18,7 +20,9 @@ func TestProtocol_Handshake(t *testing.T) {
 	expectedIDs := []string{
 		"id name Axon Engine",
 		"id author Axon Team",
-		"option name Hash type spin",
+		"option name Hash type spin default 64 min 1 max 1024",
+		"option name Threads type spin default 1 min 1 max 128",
+		"option name MultiPV type spin default 1 min 1 max 128",
 		"uciok",
 		"readyok",
 	}
@@ -81,6 +85,34 @@ func TestProtocol_SetOption(t *testing.T) {
 
 	// We run it mainly to ensure no panics or errors occur during command parsing.
 	p.Start()
+}
+
+func TestProtocol_SetOptionValues(t *testing.T) {
+	p := NewProtocol(strings.NewReader(""), &bytes.Buffer{})
+
+	p.handleSetOption([]string{"setoption", "name", "Threads", "value", "4"})
+	if p.threads != 4 {
+		t.Fatalf("expected Threads to be 4, got %d", p.threads)
+	}
+
+	p.handleSetOption([]string{"setoption", "name", "MultiPV", "value", "3"})
+	if p.multiPV != 3 {
+		t.Fatalf("expected MultiPV to be 3, got %d", p.multiPV)
+	}
+
+	oldTT := search.GlobalTT
+	p.handleSetOption([]string{"setoption", "name", "Hash", "value", "128"})
+	if search.GlobalTT == oldTT {
+		t.Fatal("expected Hash setoption to replace the transposition table")
+	}
+}
+
+func TestProtocol_SetOptionInvalidTokens(t *testing.T) {
+	p := NewProtocol(strings.NewReader(""), &bytes.Buffer{})
+	p.handleSetOption([]string{"setoption", "name", "Threads"})
+	if p.threads != 1 {
+		t.Fatalf("expected Threads to remain default 1, got %d", p.threads)
+	}
 }
 
 // TestProtocol_UCINewGame tests the ucinewgame command.
