@@ -5,6 +5,7 @@ import (
 )
 
 // Material values for Midgame (MG) and Endgame (EG)
+// These values are tuned for tapered evaluation.
 const (
 	PawnMG, PawnEG     = 82, 94
 	KnightMG, KnightEG = 337, 281
@@ -13,24 +14,29 @@ const (
 	QueenMG, QueenEG   = 1025, 936
 
 	// Phase values for interpolation
+	// These determine how much each piece contributes to the "midgame-ness" of a position.
 	KnightPhase = 1
 	BishopPhase = 1
 	RookPhase   = 2
 	QueenPhase  = 4
-	TotalPhase  = 24 // 4*1 + 4*1 + 4*2 + 2*4
+	TotalPhase  = 24 // 4*Knight + 4*Bishop + 4*Rook + 2*Queen
 )
 
-// Piece-Square Tables (PST) for Midgame
+// Piece-Square Tables (PST)
+// Orientation: The tables are stored from Rank 8 (top) to Rank 1 (bottom).
+// This allows for a visual representation that matches a physical chess board.
+
+// mgPST handles the positional bonuses in the Midgame.
 var mgPST = [7][64]int{
 	engine.Pawn: {
-		0, 0, 0, 0, 0, 0, 0, 0,
-		50, 50, 50, 50, 50, 50, 50, 50,
-		10, 10, 20, 30, 30, 20, 10, 10,
-		5, 5, 10, 25, 25, 10, 5, 5,
-		0, 0, 0, 20, 20, 0, 0, 0,
-		5, -5, -10, 0, 0, -10, -5, 5,
-		5, 10, 10, -20, -20, 10, 10, 5,
-		0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, // Rank 8
+		50, 50, 50, 50, 50, 50, 50, 50, // Rank 7
+		10, 10, 20, 30, 30, 20, 10, 10, // Rank 6
+		5, 5, 10, 25, 25, 10, 5, 5, // Rank 5
+		0, 0, 0, 20, 20, 0, 0, 0, // Rank 4
+		5, -5, -10, 0, 0, -10, -5, 5, // Rank 3
+		5, 10, 10, -20, -20, 10, 10, 5, // Rank 2
+		0, 0, 0, 0, 0, 0, 0, 0, // Rank 1
 	},
 	engine.Knight: {
 		-50, -40, -30, -30, -30, -30, -40, -50,
@@ -84,7 +90,7 @@ var mgPST = [7][64]int{
 	},
 }
 
-// Piece-Square Tables (PST) for Endgame
+// egPST handles the positional bonuses in the Endgame.
 var egPST = [7][64]int{
 	engine.Pawn: {
 		0, 0, 0, 0, 0, 0, 0, 0,
@@ -148,17 +154,29 @@ var egPST = [7][64]int{
 	},
 }
 
+// Game Phases in chess are traditionally divided into:
+// 1. Opening: Pieces are developed, king is brought to safety.
+// 2. Middlegame: Most pieces are active, tactical complexities arise.
+// 3. Endgame: Few pieces remain, king becomes active, and pawn promotion is the primary goal.
+//
+// Axon uses Tapered Evaluation to transition between these phases. Instead of abrupt
+// changes, it calculates a Midgame (MG) and Endgame (EG) score simultaneously and
+// interpolates between them based on the material remaining on the board.
+
 // Evaluate returns a score for the current board position using tapered evaluation.
 func Evaluate(b *engine.Board) int {
+	// 1. Determine the game phase based on non-pawn material.
 	mgW, egW, _ := calculatePhase(b)
 
+	// 2. Calculate separate scores for midgame and endgame for both sides.
 	mgWhite, egWhite := evaluateColor(b, engine.White)
 	mgBlack, egBlack := evaluateColor(b, engine.Black)
 
 	mgScore := mgWhite - mgBlack
 	egScore := egWhite - egBlack
 
-	// Interpolate scores based on the phase
+	// 3. Interpolate between the two based on the phase weight.
+	// As pieces are captured, egW increases and mgW decreases.
 	score := (mgScore*mgW + egScore*egW) / TotalPhase
 
 	if b.SideToMove == engine.Black {
@@ -167,7 +185,10 @@ func Evaluate(b *engine.Board) int {
 	return score
 }
 
+// calculatePhase determines how "close" we are to the endgame.
+// It uses material weights to assign a phase value from 0 (Opening/Midgame) to TotalPhase (Endgame).
 func calculatePhase(b *engine.Board) (int, int, int) {
+	// Start with full phase (Endgame) and subtract based on pieces present.
 	phase := TotalPhase
 
 	phase -= (b.Pieces[engine.White][engine.Knight].Count() + b.Pieces[engine.Black][engine.Knight].Count()) * KnightPhase
@@ -179,6 +200,8 @@ func calculatePhase(b *engine.Board) (int, int, int) {
 		phase = 0
 	}
 
+	// egW (Endgame Weight) is higher when fewer pieces are on the board.
+	// mgW (Midgame Weight) is higher when more pieces are on the board.
 	egW := phase
 	mgW := TotalPhase - phase
 
@@ -346,7 +369,10 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 		mg += evaluateKingSafety(b, c, sq)
 	}
 
-	// Threats: hanging pieces and bad trades
+	// Threats Evaluation:
+	// A "Threat" exists when a piece is vulnerable to capture in a way that loses material.
+	// 1. Hanging Pieces: Attacked by the enemy and not defended by any friendly piece.
+	// 2. Bad Trades: Defended, but attacked by an enemy piece of lesser value (e.g. Rook vs Pawn).
 	them := c ^ 1
 	enemyOcc := b.Colors[them]
 	usOcc := b.Colors[c]
@@ -356,6 +382,7 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 		for subset != 0 {
 			sq := subset.PopLSB()
 
+			// Get all pieces attacking this square
 			attackers := b.AllAttackers(sq, occ)
 			enemyAttackers := attackers & enemyOcc
 
@@ -363,11 +390,11 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 				defenders := attackers & usOcc
 
 				if defenders.IsEmpty() {
-					// Piece is hanging
-					mg -= engine.PieceValues[pt] / 3
+					// Hanging piece penalty: Scale by piece value
+					mg -= engine.PieceValues[pt] / 4
 					eg -= engine.PieceValues[pt] / 2
 				} else {
-					// Piece is defended, check for attacks by lesser pieces
+					// Defended piece, but check for attacks by lesser pieces
 					weakestEnemyAttacker := engine.None
 					for ept := engine.Pawn; ept < pt; ept++ {
 						if !(enemyAttackers & b.Pieces[them][ept]).IsEmpty() {
@@ -377,9 +404,9 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 					}
 
 					if weakestEnemyAttacker != engine.None {
-						// Attacked by lesser piece
-						mg -= 20
-						eg -= 30
+						// Attacked by lesser piece (e.g. Knight attacked by Pawn)
+						mg -= 25
+						eg -= 40
 					}
 				}
 			}
@@ -423,12 +450,19 @@ func evaluateKingSafety(b *engine.Board, c engine.Color, kingSq engine.Square) i
 	return score
 }
 
+// getPST maps a square to its value in the Piece-Square Table.
+// It uses a relative mapping so that both sides use the same table from their own perspective.
 func getPST(pt engine.PieceType, sq engine.Square, c engine.Color, midgame bool) int {
-	index := int(sq)
-	if c == engine.Black {
-		rank := int(sq) / 8
-		file := int(sq) % 8
+	rank := int(sq) / 8
+	file := int(sq) % 8
+
+	index := 0
+	if c == engine.White {
+		// Table is stored Rank 8 to Rank 1. White A1 is index 56.
 		index = (7-rank)*8 + file
+	} else {
+		// For Black, Rank 8 is at the top of their perspective (index 0..7).
+		index = rank*8 + file
 	}
 
 	if midgame {

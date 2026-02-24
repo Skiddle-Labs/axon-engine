@@ -3,17 +3,29 @@ package engine
 // GenerateMoves generates all pseudo-legal moves for the current board position.
 // Pseudo-legal moves include moves that might leave the king in check.
 func (b *Board) GenerateMoves() MoveList {
+	return b.generateMoves(false)
+}
+
+// GenerateCaptures generates only pseudo-legal captures and promotions.
+func (b *Board) GenerateCaptures() MoveList {
+	return b.generateMoves(true)
+}
+
+func (b *Board) generateMoves(capturesOnly bool) MoveList {
 	ml := MoveList{}
 	us := b.SideToMove
 	them := us ^ 1
 	occ := b.Occupancy()
 	enemyOcc := b.Colors[them]
 
-	// 1. King Moves (excluding castling for now)
+	// 1. King Moves
 	kingBB := b.Pieces[us][King]
 	if !kingBB.IsEmpty() {
 		from := kingBB.LSB()
 		attacks := KingAttacks[from] & ^b.Colors[us]
+		if capturesOnly {
+			attacks &= enemyOcc
+		}
 		b.addMovesFromAttacks(&ml, from, attacks, enemyOcc)
 	}
 
@@ -22,6 +34,9 @@ func (b *Board) GenerateMoves() MoveList {
 	for knightBB != 0 {
 		from := knightBB.PopLSB()
 		attacks := KnightAttacks[from] & ^b.Colors[us]
+		if capturesOnly {
+			attacks &= enemyOcc
+		}
 		b.addMovesFromAttacks(&ml, from, attacks, enemyOcc)
 	}
 
@@ -30,6 +45,9 @@ func (b *Board) GenerateMoves() MoveList {
 	for bishopBB != 0 {
 		from := bishopBB.PopLSB()
 		attacks := GetBishopAttacks(from, occ) & ^b.Colors[us]
+		if capturesOnly {
+			attacks &= enemyOcc
+		}
 		b.addMovesFromAttacks(&ml, from, attacks, enemyOcc)
 	}
 
@@ -38,6 +56,9 @@ func (b *Board) GenerateMoves() MoveList {
 	for rookBB != 0 {
 		from := rookBB.PopLSB()
 		attacks := GetRookAttacks(from, occ) & ^b.Colors[us]
+		if capturesOnly {
+			attacks &= enemyOcc
+		}
 		b.addMovesFromAttacks(&ml, from, attacks, enemyOcc)
 	}
 
@@ -46,6 +67,9 @@ func (b *Board) GenerateMoves() MoveList {
 	for queenBB != 0 {
 		from := queenBB.PopLSB()
 		attacks := GetQueenAttacks(from, occ) & ^b.Colors[us]
+		if capturesOnly {
+			attacks &= enemyOcc
+		}
 		b.addMovesFromAttacks(&ml, from, attacks, enemyOcc)
 	}
 
@@ -60,7 +84,7 @@ func (b *Board) GenerateMoves() MoveList {
 			if !occ.Test(to) {
 				if to.Rank() == 7 {
 					b.addPawnPromotionMoves(&ml, from, to, false)
-				} else {
+				} else if !capturesOnly {
 					ml.AddMove(NewMove(from, to, QuietFlag))
 					// Double push
 					if from.Rank() == 1 && !occ.Test(to+8) {
@@ -95,7 +119,7 @@ func (b *Board) GenerateMoves() MoveList {
 			if !occ.Test(to) {
 				if to.Rank() == 0 {
 					b.addPawnPromotionMoves(&ml, from, to, false)
-				} else {
+				} else if !capturesOnly {
 					ml.AddMove(NewMove(from, to, QuietFlag))
 					// Double push
 					if from.Rank() == 6 && !occ.Test(to-8) {
@@ -124,33 +148,35 @@ func (b *Board) GenerateMoves() MoveList {
 	}
 
 	// 7. Castling
-	if us == White {
-		if b.Castling&WhiteKingside != 0 {
-			if !occ.Test(F1) && !occ.Test(G1) {
-				if !b.IsSquareAttacked(E1, Black) && !b.IsSquareAttacked(F1, Black) {
-					ml.AddMove(NewMove(E1, G1, KingsideCast))
+	if !capturesOnly {
+		if us == White {
+			if b.Castling&WhiteKingside != 0 {
+				if !occ.Test(F1) && !occ.Test(G1) {
+					if !b.IsSquareAttacked(E1, Black) && !b.IsSquareAttacked(F1, Black) {
+						ml.AddMove(NewMove(E1, G1, KingsideCast))
+					}
 				}
 			}
-		}
-		if b.Castling&WhiteQueenside != 0 {
-			if !occ.Test(D1) && !occ.Test(C1) && !occ.Test(B1) {
-				if !b.IsSquareAttacked(E1, Black) && !b.IsSquareAttacked(D1, Black) {
-					ml.AddMove(NewMove(E1, C1, QueensideCast))
+			if b.Castling&WhiteQueenside != 0 {
+				if !occ.Test(D1) && !occ.Test(C1) && !occ.Test(B1) {
+					if !b.IsSquareAttacked(E1, Black) && !b.IsSquareAttacked(D1, Black) {
+						ml.AddMove(NewMove(E1, C1, QueensideCast))
+					}
 				}
 			}
-		}
-	} else {
-		if b.Castling&BlackKingside != 0 {
-			if !occ.Test(F8) && !occ.Test(G8) {
-				if !b.IsSquareAttacked(E8, White) && !b.IsSquareAttacked(F8, White) {
-					ml.AddMove(NewMove(E8, G8, KingsideCast))
+		} else {
+			if b.Castling&BlackKingside != 0 {
+				if !occ.Test(F8) && !occ.Test(G8) {
+					if !b.IsSquareAttacked(E8, White) && !b.IsSquareAttacked(F8, White) {
+						ml.AddMove(NewMove(E8, G8, KingsideCast))
+					}
 				}
 			}
-		}
-		if b.Castling&BlackQueenside != 0 {
-			if !occ.Test(D8) && !occ.Test(C8) && !occ.Test(B8) {
-				if !b.IsSquareAttacked(E8, White) && !b.IsSquareAttacked(D8, White) {
-					ml.AddMove(NewMove(E8, C8, QueensideCast))
+			if b.Castling&BlackQueenside != 0 {
+				if !occ.Test(D8) && !occ.Test(C8) && !occ.Test(B8) {
+					if !b.IsSquareAttacked(E8, White) && !b.IsSquareAttacked(D8, White) {
+						ml.AddMove(NewMove(E8, C8, QueensideCast))
+					}
 				}
 			}
 		}

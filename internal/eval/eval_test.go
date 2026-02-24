@@ -107,3 +107,40 @@ func TestEvaluate_KingSafety(t *testing.T) {
 		t.Errorf("Safe king (MG:%d) should evaluate higher than exposed king (MG:%d)", mg1, mg2)
 	}
 }
+
+// TestEvaluate_Threats verifies that hanging pieces and bad trades are penalized.
+func TestEvaluate_Threats(t *testing.T) {
+	// 1. Hanging Piece: White Knight attacked by Black Pawn, no defenders
+	b1 := engine.NewBoard()
+	b1.SetFEN("k7/8/8/3p4/4N3/8/8/K7 w - - 0 1")
+	mg1, eg1 := evaluateColor(b1, engine.White)
+
+	// Same position but Knight is not attacked
+	b2 := engine.NewBoard()
+	b2.SetFEN("k7/8/8/8/4N3/8/8/K7 w - - 0 1")
+	mg2, eg2 := evaluateColor(b2, engine.White)
+
+	if mg1 >= mg2 {
+		t.Errorf("Hanging piece should be penalized in midgame. mg1:%d, mg2:%d", mg1, mg2)
+	}
+	if eg1 >= eg2 {
+		t.Errorf("Hanging piece should be penalized in endgame. eg1:%d, eg2:%d", eg1, eg2)
+	}
+
+	// 2. Bad Trade: White Rook defended by Pawn, but attacked by Black Pawn
+	b3 := engine.NewBoard()
+	b3.SetFEN("k7/8/8/3p4/4R3/4P3/8/K7 w - - 0 1")
+	mg3, eg3 := evaluateColor(b3, engine.White)
+
+	// Same position but Rook is not attacked
+	b4 := engine.NewBoard()
+	b4.SetFEN("k7/8/8/8/4R3/4P3/8/K7 w - - 0 1")
+	mg4, eg4 := evaluateColor(b4, engine.White)
+
+	if mg3 >= mg4 {
+		t.Errorf("Bad trade (Rook vs Pawn) should be penalized in midgame. mg3:%d, mg4:%d", mg3, mg4)
+	}
+	if eg3 >= eg4 {
+		t.Errorf("Bad trade (Rook vs Pawn) should be penalized in endgame. eg3:%d, eg4:%d", eg3, eg4)
+	}
+}

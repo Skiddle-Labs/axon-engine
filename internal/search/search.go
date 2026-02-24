@@ -129,14 +129,7 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 				lastScore = score
 				if bestMove != engine.NoMove {
 					globalBestMove = bestMove
-					duration := time.Since(e.StartTime).Seconds()
-					nps := uint64(0)
-					if duration > 0.001 {
-						nps = uint64(float64(e.Nodes) / duration)
-					}
-
-					fmt.Printf("info depth %d score cp %d nodes %d nps %d time %d pv %s\n",
-						depth, lastScore, e.Nodes, nps, int(duration*1000), globalBestMove.String())
+					e.printInfo(depth, score, globalBestMove)
 				}
 				break
 			}
@@ -145,14 +138,7 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 				lastScore = score
 				if bestMove != engine.NoMove {
 					globalBestMove = bestMove
-					duration := time.Since(e.StartTime).Seconds()
-					nps := uint64(0)
-					if duration > 0.001 {
-						nps = uint64(float64(e.Nodes) / duration)
-					}
-
-					fmt.Printf("info depth %d score cp %d nodes %d nps %d time %d pv %s\n",
-						depth, lastScore, e.Nodes, nps, int(duration*1000), globalBestMove.String())
+					e.printInfo(depth, score, globalBestMove)
 				}
 				break
 			}
@@ -300,7 +286,6 @@ func (e *Engine) negamax(depth, alpha, beta int) int {
 				e.HistoryTable[e.Board.SideToMove][move.From()][move.To()] += depth * depth
 			}
 
-			bestScore = beta
 			break // Fail-high, beta cutoff
 		}
 		if score > alpha {
@@ -348,47 +333,125 @@ func (e *Engine) quiescence(alpha, beta int) int {
 		return ttScore
 	}
 
-	standingPat := eval.Evaluate(e.Board)
+	inCheck := e.Board.IsSquareAttacked(e.Board.Pieces[e.Board.SideToMove][engine.King].LSB(), e.Board.SideToMove^1)
 
-	if standingPat >= beta {
-		return beta
-	}
-	if standingPat > alpha {
-		alpha = standingPat
+	alphaOrig := alpha
+	standingPat := -Infinity
+
+	if !inCheck {
+		standingPat = eval.Evaluate(e.Board)
+		if standingPat >= beta {
+			return standingPat
+		}
+		if standingPat > alpha {
+			alpha = standingPat
+		}
 	}
 
-	ml := e.Board.GenerateMoves()
+	var ml engine.MoveList
+	if inCheck {
+		ml = e.Board.GenerateMoves()
+	} else {
+		ml = e.Board.GenerateCaptures()
+	}
+
 	// Order moves in quiescence search too (captures only)
 	e.orderMoves(&ml, engine.NoMove)
 
+	bestScore := standingPat
+	legalMoves := 0
+
 	for i := 0; i < ml.Count; i++ {
 		move := ml.Moves[i]
-		// In quiescence, we only look at captures.
-		if move.Flags()&engine.CaptureFlag == 0 {
-			continue
-		}
 
-		// SEE Pruning: Don't search losing captures in quiescence
-		if e.Board.SEE(move) < 0 {
-			continue
+		if !inCheck {
+			// Delta Pruning
+			if move.Flags()&0x8000 == 0 {
+				victim := e.Board.PieceAt(move.To()).Type()
+				if move.Flags() == engine.EnPassantFlag {
+					victim = engine.Pawn
+				}
+
+				// Rough piece values for delta pruning
+				victimValue := 0
+				switch victim {
+				case engine.Pawn:
+					victimValue = 100
+				case engine.Knight:
+					victimValue = 300
+				case engine.Bishop:
+					victimValue = 300
+				case engine.Rook:
+					victimValue = 500
+				case engine.Queen:
+					victimValue = 900
+				}
+
+				if standingPat+victimValue+200 < alpha {
+					continue
+				}
+			}
+
+			// SEE Pruning: Don't search losing captures in quiescence
+			if e.Board.SEE(move) < 0 {
+				continue
+			}
 		}
 
 		if !e.Board.MakeMove(move) {
 			continue
 		}
+		legalMoves++
 
 		score := -e.quiescence(-beta, -alpha)
 		e.Board.UnmakeMove(move)
 
-		if score >= beta {
-			return beta
-		}
-		if score > alpha {
-			alpha = score
+		if score > bestScore {
+			bestScore = score
+			if score >= beta {
+				break
+			}
+			if score > alpha {
+				alpha = score
+			}
 		}
 	}
 
-	return alpha
+	if inCheck && legalMoves == 0 {
+		bestScore = -MateScore + e.Board.Ply
+	}
+
+	// TT Store
+	flag := ExactFlag
+	if bestScore <= alphaOrig {
+		flag = AlphaFlag
+	} else if bestScore >= beta {
+		flag = BetaFlag
+	}
+	e.TT.Store(e.Board.Hash, 0, bestScore, flag, engine.NoMove, e.Board.Ply)
+
+	return bestScore
+}
+
+func (e *Engine) printInfo(depth, score int, bestMove engine.Move) {
+	duration := time.Since(e.StartTime).Seconds()
+	nps := uint64(0)
+	if duration > 0.001 {
+		nps = uint64(float64(e.Nodes) / duration)
+	}
+
+	if score > MateScore-1000 {
+		mateIn := (MateScore - score + 1) / 2
+		fmt.Printf("info depth %d score mate %d nodes %d nps %d time %d pv %s\n",
+			depth, mateIn, e.Nodes, nps, int(duration*1000), bestMove.String())
+	} else if score < -MateScore+1000 {
+		mateIn := (MateScore + score + 1) / 2
+		fmt.Printf("info depth %d score mate -%d nodes %d nps %d time %d pv %s\n",
+			depth, mateIn, e.Nodes, nps, int(duration*1000), bestMove.String())
+	} else {
+		fmt.Printf("info depth %d score cp %d nodes %d nps %d time %d pv %s\n",
+			depth, score, e.Nodes, nps, int(duration*1000), bestMove.String())
+	}
 }
 
 // MVV-LVA (Most Valuable Victim - Least Valuable Aggressor) table.

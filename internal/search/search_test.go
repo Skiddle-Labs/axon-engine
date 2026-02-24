@@ -127,3 +127,22 @@ func TestSearch_Stalemate(t *testing.T) {
 		t.Errorf("Expected 0 legal moves in stalemate, got %d", legalCount)
 	}
 }
+
+// TestSearch_QuiescenceCheck verifies that quiescence search handles checks correctly.
+func TestSearch_QuiescenceCheck(t *testing.T) {
+	b := engine.NewBoard()
+	// White to move, Qxf7# is mate in 1. Capture move.
+	b.SetFEN("r1bqkbnr/pp1ppQpp/2n5/2p5/4P3/8/PPPP1PPP/RNB1KBNR b KQkq - 0 1")
+
+	GlobalTT.Clear()
+	searchEngine := NewEngine(b)
+	// Depth 1 search for Black should see the threat or respond to checks if it were his turn.
+	// But let's use a position where White is in check and must respond.
+	b.SetFEN("rnb1kbnr/pppp1ppp/8/4p3/5PPq/8/PPPPP2P/RNBQKBNR w KQkq - 0 1")
+	bestMove := searchEngine.Search(1)
+
+	// White is in checkmate by the queen on h4. Search should return NoMove or evaluate accordingly.
+	if bestMove != engine.NoMove {
+		t.Errorf("Expected NoMove in checkmate position, got %s", bestMove.String())
+	}
+}

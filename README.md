@@ -8,30 +8,32 @@ Axon is a high-performance, tournament-grade chess engine written in Go (Golang)
 - **Bitboards**: High-speed board representation using 64-bit integers for all piece types and occupancy masks.
 - **Zobrist Hashing**: Efficient, incremental position hashing for Transposition Table lookups and repetition detection.
 - **Precomputed Attacks**: Fast lookup tables for leapers (Kings, Knights) and ray-casting for sliding pieces (Rooks, Bishops, Queens).
+- **SEE (Static Exchange Evaluation)**: Accurately calculates the material balance of capture sequences to inform move ordering and pruning.
 
 ### Search Algorithms
-- **Principal Variation Search (PVS)**: Optimized Alpha-Beta pruning that focuses on the most promising move.
-- **Iterative Deepening**: Progressively deeper searches with real-time feedback.
-- **Transposition Table (TT)**: Caches millions of search results to avoid redundant calculations across different branches.
-- **Null Move Pruning (NMP)**: Drastically reduces search space by "passing" the turn to detect overwhelmingly strong positions.
-- **Late Move Reductions (LMR)**: Safely reduces search depth for moves that are unlikely to be the best based on ordering.
-- **Aspiration Windows**: Narrows the Alpha-Beta window around the previous score to speed up pruning.
-- **Internal Iterative Deepening (IID)**: Performs shallow searches to find guide moves when no Transposition Table data is available.
-- **Futility Pruning**: Skips quiet moves at low depths that cannot reasonably improve the score.
-- **Quiescence Search**: Extends search during tactical exchanges to avoid the "horizon effect."
+- **Principal Variation Search (PVS)**: Optimized Alpha-Beta pruning that focuses on the most promising move branch.
+- **Iterative Deepening**: Progressively deeper searches with real-time UCI feedback and time management.
+- **Quiescence Search**: Stabilizes evaluation by searching captures and checks at leaf nodes. Features **Delta Pruning** to skip low-impact captures and **Check Handling** to avoid tactical blind spots.
+- **Transposition Table (TT)**: Caches millions of search results with aging and replacement strategies to avoid redundant calculations.
+- **Pruning Heuristics**: 
+    - **Null Move Pruning (NMP)**: Detects overwhelmingly strong positions to skip branches early.
+    - **Late Move Reductions (LMR)**: Reduces search depth for moves deemed unlikely to improve the score.
+    - **Futility Pruning**: Skips quiet moves at low depths when the static evaluation is significantly below alpha.
+    - **Internal Iterative Deepening (IID)**: Finds guide moves when TT data is missing.
 
 ### Move Ordering
-- **Static Exchange Evaluation (SEE)**: Calculates the outcome of capture sequences to avoid losing material blindly.
-- **Killer Moves**: Remembers tactical "refutation" moves that caused cutoffs at specific depths.
-- **History Heuristic**: Learns which moves have been historically strong throughout the search.
-- **MVV-LVA**: Prioritizes captures based on the Most Valuable Victim and Least Valuable Aggressor.
+- **TT Move**: Prioritizes the best move found in previous search iterations.
+- **MVV-LVA**: Orders captures by Most Valuable Victim and Least Valuable Aggressor.
+- **Killer Moves & History Heuristic**: Rewards moves that caused cutoffs in other branches of the search tree.
+- **Promotion Prioritization**: Gives high priority to moves that create high-value pieces.
 
 ### Evaluation (Traditional)
-- **Tapered Evaluation**: Dynamically interpolates between **Midgame** and **Endgame** scores based on remaining material.
-- **Mobility**: Rewards pieces with higher freedom of movement and activity.
-- **King Safety**: Evaluates the pawn shield and the King's exposure to enemy pieces.
-- **Pawn Structure**: Understands and penalizes doubled and isolated pawns.
-- **Repetition Detection**: Detects and avoids (or seeks) three-fold repetitions.
+- **Tapered Evaluation**: Dynamically interpolates between **Midgame** and **Endgame** scores based on non-pawn material.
+- **Threat Evaluation**: Detects and penalizes **Hanging Pieces** (attacked and undefended) and **Bad Trades** (pieces attacked by lesser-value enemy units).
+- **Pawn Structure**: Comprehensive evaluation of **Passed Pawns** (rank-based bonuses), **Connected Pawns**, **Isolated Pawns**, and **Doubled Pawns**.
+- **Mobility & Activity**: Rewards pieces for controlling more squares and occupying central positions via Piece-Square Tables (PST).
+- **King Safety**: Evaluates pawn shields and proximity of enemy pieces to the king's position.
+- **Special Bonuses**: Includes bonuses for the **Bishop Pair** and other coordination motifs.
 
 ## Getting Started
 
@@ -46,7 +48,7 @@ go build -o axon main.go
 ```
 
 ### Usage
-Axon is a command-line engine. You can run it directly and type UCI commands, or connect it to a GUI like Arena or Cute Chess.
+Axon is a command-line engine. You can run it directly and type UCI commands, or connect it to a GUI like Arena, Cute Chess, or Banksia.
 
 ```bash
 ./axon
@@ -57,13 +59,13 @@ Axon is a command-line engine. You can run it directly and type UCI commands, or
 - `isready`: Check engine readiness.
 - `position startpos moves e2e4 e7e5`: Setup a specific position.
 - `go depth 12`: Search to a specific depth.
-- `go wtime 300000 btime 300000`: Search with a time limit.
-- `d`: Display the ASCII board and current state info.
+- `go wtime 300000 btime 300000`: Search with a time limit (e.g., 5 minutes).
+- `d`: Display the ASCII board, current evaluation, and hash status.
 
 ## Project Structure
 - `/internal/engine`: Bitboards, Move Generation, SEE, and Zobrist Hashing.
-- `/internal/search`: PVS logic, Transposition Table, and Move Ordering.
-- `/internal/eval`: Tapered evaluation and positional heuristics.
+- `/internal/search`: PVS logic, Quiescence Search, TT, and Move Ordering.
+- `/internal/eval`: Tapered evaluation, Pawn Structure, and Positional Heuristics.
 - `/internal/protocol`: UCI protocol communication layer.
 
 ## License
