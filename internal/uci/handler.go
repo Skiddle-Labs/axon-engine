@@ -6,6 +6,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/personal-github/axon-engine/internal/board"
 	"github.com/personal-github/axon-engine/internal/search"
@@ -149,7 +150,12 @@ func (h *Handler) parseMove(moveStr string) board.Move {
 
 func (h *Handler) handleGo(parts []string) {
 	engine := search.NewEngine(h.board)
-	depth := 6
+	depth := 64 // Use a high depth by default for timed games
+	var timeLimit time.Duration
+
+	wtime, btime := 0, 0
+	winc, binc := 0, 0
+	movestogo := 30 // Assume 30 moves to go if not specified
 
 	for i := 1; i < len(parts); i++ {
 		switch parts[i] {
@@ -160,9 +166,50 @@ func (h *Handler) handleGo(parts []string) {
 				}
 				i++
 			}
+		case "wtime":
+			if i+1 < len(parts) {
+				wtime, _ = strconv.Atoi(parts[i+1])
+				i++
+			}
+		case "btime":
+			if i+1 < len(parts) {
+				btime, _ = strconv.Atoi(parts[i+1])
+				i++
+			}
+		case "winc":
+			if i+1 < len(parts) {
+				winc, _ = strconv.Atoi(parts[i+1])
+				i++
+			}
+		case "binc":
+			if i+1 < len(parts) {
+				binc, _ = strconv.Atoi(parts[i+1])
+				i++
+			}
+		case "movestogo":
+			if i+1 < len(parts) {
+				movestogo, _ = strconv.Atoi(parts[i+1])
+				i++
+			}
 		case "infinite":
 			depth = 64
 		}
+	}
+
+	// Simple time management logic
+	if h.board.SideToMove == board.White && wtime > 0 {
+		timeLimit = time.Duration(wtime/movestogo+winc) * time.Millisecond
+	} else if h.board.SideToMove == board.Black && btime > 0 {
+		timeLimit = time.Duration(btime/movestogo+binc) * time.Millisecond
+	}
+
+	if timeLimit > 0 {
+		// Safety margin
+		timeLimit -= 50 * time.Millisecond
+		if timeLimit < 10*time.Millisecond {
+			timeLimit = 10 * time.Millisecond
+		}
+		engine.TimeLimit = timeLimit
 	}
 
 	bestMove := engine.Search(depth)

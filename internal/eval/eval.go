@@ -108,9 +108,27 @@ func evaluateColor(b *board.Board, c board.Color) int {
 	king := b.Pieces[c][board.King]
 
 	score += pawns.Count() * PawnValue
-	for pawns != 0 {
-		sq := pawns.PopLSB()
+	pawnCopy := pawns
+	for pawnCopy != 0 {
+		sq := pawnCopy.PopLSB()
 		score += getPSTValue(board.Pawn, sq, c)
+
+		// Doubled pawns: more than one pawn on this file
+		if (pawns & (board.FileA << sq.File())).Count() > 1 {
+			score -= 10
+		}
+
+		// Isolated pawns: no pawns on adjacent files
+		isIsolated := true
+		if sq.File() > 0 && (pawns&(board.FileA<<(sq.File()-1))) != 0 {
+			isIsolated = false
+		}
+		if sq.File() < 7 && (pawns&(board.FileA<<(sq.File()+1))) != 0 {
+			isIsolated = false
+		}
+		if isIsolated {
+			score -= 20
+		}
 	}
 
 	score += knights.Count() * KnightValue

@@ -62,6 +62,14 @@ func (b *Board) Occupancy() Bitboard {
 	return b.Colors[White] | b.Colors[Black]
 }
 
+// HasMajorPieces returns true if the given color has non-pawn/non-king pieces.
+func (b *Board) HasMajorPieces(c Color) bool {
+	return b.Pieces[c][Knight] != 0 ||
+		b.Pieces[c][Bishop] != 0 ||
+		b.Pieces[c][Rook] != 0 ||
+		b.Pieces[c][Queen] != 0
+}
+
 // PieceAt returns the piece at the given square.
 func (b *Board) PieceAt(s Square) Piece {
 	for c := White; c <= Black; c++ {

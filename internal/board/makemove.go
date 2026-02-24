@@ -239,3 +239,44 @@ func (b *Board) UnmakeMove(m Move) {
 	}
 	b.SideToMove = us
 }
+
+// MakeNullMove makes a null move (passing the turn).
+func (b *Board) MakeNullMove() {
+	b.History[b.Ply] = State{
+		EnPassant:     b.EnPassant,
+		Castling:      b.Castling,
+		HalfMoveClock: b.HalfMoveClock,
+		Hash:          b.Hash,
+		CapturedPiece: NoPiece,
+	}
+
+	if b.EnPassant != NoSquare {
+		b.Hash ^= EnPassantKeys[b.EnPassant.File()]
+	}
+
+	b.EnPassant = NoSquare
+	b.HalfMoveClock++
+	b.SideToMove ^= 1
+	b.Hash ^= SideKey
+
+	if b.SideToMove == White { // Side that moved was Black
+		b.FullMoveNumber++
+	}
+
+	b.Ply++
+}
+
+// UnmakeNullMove reverts a null move.
+func (b *Board) UnmakeNullMove() {
+	b.Ply--
+	state := b.History[b.Ply]
+	b.EnPassant = state.EnPassant
+	b.Castling = state.Castling
+	b.HalfMoveClock = state.HalfMoveClock
+	b.Hash = state.Hash
+
+	if b.SideToMove == White { // Side that moved was Black
+		b.FullMoveNumber--
+	}
+	b.SideToMove ^= 1
+}
