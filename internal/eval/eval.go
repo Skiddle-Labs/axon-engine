@@ -5,16 +5,18 @@ import (
 )
 
 // Material values for Midgame (MG) and Endgame (EG)
-// These values are tuned for tapered evaluation.
-const (
+// These values are exported to allow for automated tuning.
+var (
 	PawnMG, PawnEG     = 82, 94
 	KnightMG, KnightEG = 337, 281
 	BishopMG, BishopEG = 365, 297
 	RookMG, RookEG     = 477, 512
 	QueenMG, QueenEG   = 1025, 936
+)
 
-	// Phase values for interpolation
-	// These determine how much each piece contributes to the "midgame-ness" of a position.
+// Phase values for interpolation
+// These determine how much each piece contributes to the "midgame-ness" of a position.
+var (
 	KnightPhase = 1
 	BishopPhase = 1
 	RookPhase   = 2
@@ -26,8 +28,8 @@ const (
 // Orientation: The tables are stored from Rank 8 (top) to Rank 1 (bottom).
 // This allows for a visual representation that matches a physical chess board.
 
-// mgPST handles the positional bonuses in the Midgame.
-var mgPST = [7][64]int{
+// MgPST handles the positional bonuses in the Midgame.
+var MgPST = [7][64]int{
 	engine.Pawn: {
 		0, 0, 0, 0, 0, 0, 0, 0, // Rank 8
 		50, 50, 50, 50, 50, 50, 50, 50, // Rank 7
@@ -90,8 +92,8 @@ var mgPST = [7][64]int{
 	},
 }
 
-// egPST handles the positional bonuses in the Endgame.
-var egPST = [7][64]int{
+// EgPST handles the positional bonuses in the Endgame.
+var EgPST = [7][64]int{
 	engine.Pawn: {
 		0, 0, 0, 0, 0, 0, 0, 0,
 		80, 80, 80, 80, 80, 80, 80, 80,
@@ -153,15 +155,6 @@ var egPST = [7][64]int{
 		-50, -30, -30, -30, -30, -30, -30, -50,
 	},
 }
-
-// Game Phases in chess are traditionally divided into:
-// 1. Opening: Pieces are developed, king is brought to safety.
-// 2. Middlegame: Most pieces are active, tactical complexities arise.
-// 3. Endgame: Few pieces remain, king becomes active, and pawn promotion is the primary goal.
-//
-// Axon uses Tapered Evaluation to transition between these phases. Instead of abrupt
-// changes, it calculates a Midgame (MG) and Endgame (EG) score simultaneously and
-// interpolates between them based on the material remaining on the board.
 
 // Evaluate returns a score for the current board position using tapered evaluation.
 func Evaluate(b *engine.Board) int {
@@ -369,10 +362,7 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 		mg += evaluateKingSafety(b, c, sq)
 	}
 
-	// Threats Evaluation:
-	// A "Threat" exists when a piece is vulnerable to capture in a way that loses material.
-	// 1. Hanging Pieces: Attacked by the enemy and not defended by any friendly piece.
-	// 2. Bad Trades: Defended, but attacked by an enemy piece of lesser value (e.g. Rook vs Pawn).
+	// Threats Evaluation
 	them := c ^ 1
 	enemyOcc := b.Colors[them]
 	usOcc := b.Colors[c]
@@ -451,22 +441,19 @@ func evaluateKingSafety(b *engine.Board, c engine.Color, kingSq engine.Square) i
 }
 
 // getPST maps a square to its value in the Piece-Square Table.
-// It uses a relative mapping so that both sides use the same table from their own perspective.
 func getPST(pt engine.PieceType, sq engine.Square, c engine.Color, midgame bool) int {
 	rank := int(sq) / 8
 	file := int(sq) % 8
 
 	index := 0
 	if c == engine.White {
-		// Table is stored Rank 8 to Rank 1. White A1 is index 56.
 		index = (7-rank)*8 + file
 	} else {
-		// For Black, Rank 8 is at the top of their perspective (index 0..7).
 		index = rank*8 + file
 	}
 
 	if midgame {
-		return mgPST[pt][index]
+		return MgPST[pt][index]
 	}
-	return egPST[pt][index]
+	return EgPST[pt][index]
 }
