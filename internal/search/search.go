@@ -32,9 +32,17 @@ type Engine struct {
 	Threads int
 	MultiPV int
 
+	localNodes   uint64
 	KillerMoves  [64][2]engine.Move
 	HistoryTable [2][64][64]int
 	CounterMoves [64][64]engine.Move
+}
+
+func (e *Engine) syncNodes() {
+	if e.localNodes > 0 {
+		atomic.AddUint64(e.Nodes, e.localNodes)
+		e.localNodes = 0
+	}
 }
 
 // NewEngine creates a new search engine instance.
@@ -54,6 +62,7 @@ func NewEngine(b *engine.Board) *Engine {
 // Search finds the best move for the current position using iterative deepening.
 func (e *Engine) Search(maxDepth int) engine.Move {
 	atomic.StoreUint64(e.Nodes, 0)
+	e.localNodes = 0
 	e.StartTime = time.Now()
 	atomic.StoreInt32(e.Stopped, 0)
 	globalBestMove := engine.NoMove
@@ -95,11 +104,13 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 
 				helper.negamax(depth, -Infinity, Infinity, engine.NoMove)
 			}
+			helper.syncNodes()
 		}(t)
 	}
 	defer func() {
 		atomic.StoreInt32(e.Stopped, 1)
 		wg.Wait()
+		e.syncNodes()
 	}()
 
 	lastScore := 0
@@ -261,8 +272,10 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 
 // negamax is the core search algorithm with alpha-beta pruning.
 func (e *Engine) negamax(depth, alpha, beta int, excludedMove engine.Move) int {
-	nodes := atomic.AddUint64(e.Nodes, 1)
-	if nodes&2047 == 0 {
+	e.localNodes++
+	if e.localNodes >= 2048 {
+		nodes := atomic.AddUint64(e.Nodes, e.localNodes)
+		e.localNodes = 0
 		if (e.TimeLimit > 0 && time.Since(e.StartTime) >= e.TimeLimit) ||
 			(e.NodesLimit > 0 && nodes >= e.NodesLimit) {
 			atomic.StoreInt32(e.Stopped, 1)
@@ -476,8 +489,10 @@ func (e *Engine) negamax(depth, alpha, beta int, excludedMove engine.Move) int {
 
 // quiescence search evaluates only "noisy" positions (captures) to stabilize the evaluation.
 func (e *Engine) quiescence(alpha, beta int) int {
-	nodes := atomic.AddUint64(e.Nodes, 1)
-	if nodes&2047 == 0 {
+	e.localNodes++
+	if e.localNodes >= 2048 {
+		nodes := atomic.AddUint64(e.Nodes, e.localNodes)
+		e.localNodes = 0
 		if (e.TimeLimit > 0 && time.Since(e.StartTime) >= e.TimeLimit) ||
 			(e.NodesLimit > 0 && nodes >= e.NodesLimit) {
 			atomic.StoreInt32(e.Stopped, 1)
@@ -629,6 +644,7 @@ func (e *Engine) getPV(depth int) string {
 }
 
 func (e *Engine) printInfo(depth, score int, bestMove engine.Move, multipv int) {
+	e.syncNodes()
 	duration := time.Since(e.StartTime).Seconds()
 	nps := uint64(0)
 	nodes := atomic.LoadUint64(e.Nodes)
@@ -676,7 +692,7 @@ var mvvLva = [7][7]int{
 
 // orderMoves sorts moves to improve alpha-beta pruning efficiency.
 func (e *Engine) orderMoves(ml *engine.MoveList, ttMove engine.Move) {
-	scores := make([]int, ml.Count)
+	var scores [256]int
 
 	counterMove := engine.NoMove
 	if e.Board.Ply > 0 {
