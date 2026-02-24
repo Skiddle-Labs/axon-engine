@@ -60,6 +60,8 @@ func (p *Protocol) Start() {
 			p.handleUCI()
 		case "isready":
 			p.handleIsReady()
+		case "bench":
+			p.handleBench()
 		case "position":
 			p.handlePosition(parts)
 		case "go":
@@ -446,7 +448,81 @@ func (p *Protocol) handleDisplay() {
 
 func (p *Protocol) handleEval() {
 	score := eval.Evaluate(p.board)
-	p.send(fmt.Sprintf("evaluation %d cp", score))
+	p.send(fmt.Sprintf("Evaluation: %d cp", score))
+
+	typeNames := []string{"None", "Pawn", "Knight", "Bishop", "Rook", "Queen", "King"}
+
+	p.send("Material breakdown:")
+	whiteMg, whiteEg := 0, 0
+	blackMg, blackEg := 0, 0
+
+	for pt := engine.Pawn; pt <= engine.Queen; pt++ {
+		wCount := p.board.Pieces[engine.White][pt].Count()
+		bCount := p.board.Pieces[engine.Black][pt].Count()
+
+		var mg, eg int
+		switch pt {
+		case engine.Pawn:
+			mg, eg = eval.PawnMG, eval.PawnEG
+		case engine.Knight:
+			mg, eg = eval.KnightMG, eval.KnightEG
+		case engine.Bishop:
+			mg, eg = eval.BishopMG, eval.BishopEG
+		case engine.Rook:
+			mg, eg = eval.RookMG, eval.RookEG
+		case engine.Queen:
+			mg, eg = eval.QueenMG, eval.QueenEG
+		}
+
+		whiteMg += wCount * mg
+		whiteEg += wCount * eg
+		blackMg += bCount * mg
+		blackEg += bCount * eg
+
+		if wCount > 0 || bCount > 0 {
+			p.send(fmt.Sprintf("  %-8s | White: %2d (MG: %4d, EG: %4d) | Black: %2d (MG: %4d, EG: %4d)",
+				typeNames[pt], wCount, wCount*mg, wCount*eg, bCount, bCount*mg, bCount*eg))
+		}
+	}
+
+	p.send(fmt.Sprintf("  %-8s | White: (MG: %4d, EG: %4d) | Black: (MG: %4d, EG: %4d)",
+		"Total", whiteMg, whiteEg, blackMg, blackEg))
+}
+
+func (p *Protocol) handleBench() {
+	positions := []string{
+		"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+		"r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
+		"8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
+		"r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
+		"rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
+		"r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
+	}
+
+	totalNodes := uint64(0)
+	startTime := time.Now()
+
+	for _, fen := range positions {
+		p.board.SetFEN(fen)
+		p.search = search.NewEngine(p.board)
+		p.search.Threads = p.threads
+		p.search.NodesLimit = 0
+		p.search.TimeLimit = 0
+
+		p.send(fmt.Sprintf("Benchmarking position: %s", fen))
+		p.search.Search(10) // Search to depth 10
+		totalNodes += atomic.LoadUint64(p.search.Nodes)
+	}
+
+	duration := time.Since(startTime).Seconds()
+	nps := uint64(0)
+	if duration > 0 {
+		nps = uint64(float64(totalNodes) / duration)
+	}
+
+	p.send(fmt.Sprintf("\nTotal nodes: %d", totalNodes))
+	p.send(fmt.Sprintf("Time: %.3f s", duration))
+	p.send(fmt.Sprintf("Nodes per second: %d", nps))
 }
 
 func (p *Protocol) send(msg string) {
