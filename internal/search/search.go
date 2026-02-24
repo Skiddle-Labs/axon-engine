@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/personal-github/axon-engine/internal/board"
+	"github.com/personal-github/axon-engine/internal/engine"
 	"github.com/personal-github/axon-engine/internal/eval"
 )
 
@@ -17,19 +17,19 @@ var GlobalTT = NewTranspositionTable(64)
 
 // Engine handles the search process.
 type Engine struct {
-	Board     *board.Board
+	Board     *engine.Board
 	Nodes     uint64
 	StartTime time.Time
 	TimeLimit time.Duration
 	Stopped   bool
 	TT        *TranspositionTable
 
-	KillerMoves  [64][2]board.Move
+	KillerMoves  [64][2]engine.Move
 	HistoryTable [2][64][64]int
 }
 
 // NewEngine creates a new search engine instance.
-func NewEngine(b *board.Board) *Engine {
+func NewEngine(b *engine.Board) *Engine {
 	return &Engine{
 		Board: b,
 		TT:    GlobalTT,
@@ -37,11 +37,11 @@ func NewEngine(b *board.Board) *Engine {
 }
 
 // Search finds the best move for the current position using iterative deepening.
-func (e *Engine) Search(maxDepth int) board.Move {
+func (e *Engine) Search(maxDepth int) engine.Move {
 	e.Nodes = 0
 	e.StartTime = time.Now()
 	e.Stopped = false
-	globalBestMove := board.NoMove
+	globalBestMove := engine.NoMove
 
 	lastScore := 0
 	for depth := 1; depth <= maxDepth; depth++ {
@@ -55,7 +55,7 @@ func (e *Engine) Search(maxDepth int) board.Move {
 		}
 
 		for {
-			bestMove := board.NoMove
+			bestMove := engine.NoMove
 			score := -Infinity
 
 			ml := e.Board.GenerateMoves()
@@ -77,7 +77,7 @@ func (e *Engine) Search(maxDepth int) board.Move {
 				} else {
 					// LMR at root (mild)
 					reduction := 0
-					if depth >= 3 && i >= 6 && move.Flags()&board.CaptureFlag == 0 && move.Flags()&0x8000 == 0 {
+					if depth >= 3 && i >= 6 && move.Flags()&engine.CaptureFlag == 0 && move.Flags()&0x8000 == 0 {
 						reduction = 1
 					}
 
@@ -127,7 +127,7 @@ func (e *Engine) Search(maxDepth int) board.Move {
 				}
 			} else {
 				lastScore = score
-				if bestMove != board.NoMove {
+				if bestMove != engine.NoMove {
 					globalBestMove = bestMove
 					duration := time.Since(e.StartTime).Seconds()
 					nps := uint64(0)
@@ -143,7 +143,7 @@ func (e *Engine) Search(maxDepth int) board.Move {
 
 			if alpha == -Infinity && beta == Infinity {
 				lastScore = score
-				if bestMove != board.NoMove {
+				if bestMove != engine.NoMove {
 					globalBestMove = bestMove
 					duration := time.Since(e.StartTime).Seconds()
 					nps := uint64(0)
@@ -191,7 +191,7 @@ func (e *Engine) negamax(depth, alpha, beta int) int {
 		}
 	}
 
-	inCheck := e.Board.IsSquareAttacked(e.Board.Pieces[e.Board.SideToMove][board.King].LSB(), e.Board.SideToMove^1)
+	inCheck := e.Board.IsSquareAttacked(e.Board.Pieces[e.Board.SideToMove][engine.King].LSB(), e.Board.SideToMove^1)
 	if inCheck {
 		depth++
 	}
@@ -216,13 +216,13 @@ func (e *Engine) negamax(depth, alpha, beta int) int {
 
 	// Internal Iterative Deepening (IID)
 	// If we don't have a best move from the TT, perform a shallow search to find one.
-	if depth >= 5 && ttMove == board.NoMove {
+	if depth >= 5 && ttMove == engine.NoMove {
 		e.negamax(depth-2, alpha, beta)
 		_, ttMove, _ = e.TT.Probe(e.Board.Hash, depth, alpha, beta, e.Board.Ply)
 	}
 
 	alphaOrig := alpha
-	bestMove := board.NoMove
+	bestMove := engine.NoMove
 	bestScore := -Infinity
 	standingPat := eval.Evaluate(e.Board)
 
@@ -234,14 +234,14 @@ func (e *Engine) negamax(depth, alpha, beta int) int {
 		move := ml.Moves[i]
 
 		// Futility Pruning: Skip quiet moves at low depth if they can't improve alpha
-		if depth <= 3 && !inCheck && i > 0 && move.Flags()&board.CaptureFlag == 0 && move.Flags()&0x8000 == 0 {
+		if depth <= 3 && !inCheck && i > 0 && move.Flags()&engine.CaptureFlag == 0 && move.Flags()&0x8000 == 0 {
 			if standingPat+depth*150 < alpha {
 				continue
 			}
 		}
 
 		// Bad Capture Pruning: skip captures that lose material at low depths
-		if depth <= 2 && !inCheck && move.Flags()&board.CaptureFlag != 0 && e.Board.SEE(move) < 0 {
+		if depth <= 2 && !inCheck && move.Flags()&engine.CaptureFlag != 0 && e.Board.SEE(move) < 0 {
 			continue
 		}
 
@@ -258,7 +258,7 @@ func (e *Engine) negamax(depth, alpha, beta int) int {
 		} else {
 			// Late Move Reductions (LMR)
 			reduction := 0
-			if depth >= 3 && i >= 4 && !inCheck && move.Flags()&board.CaptureFlag == 0 && move.Flags()&0x8000 == 0 {
+			if depth >= 3 && i >= 4 && !inCheck && move.Flags()&engine.CaptureFlag == 0 && move.Flags()&0x8000 == 0 {
 				reduction = 1
 				if i >= 10 {
 					reduction = 2
@@ -292,7 +292,7 @@ func (e *Engine) negamax(depth, alpha, beta int) int {
 
 		if score >= beta {
 			// Store killer moves and history heuristic for quiet moves
-			if move.Flags()&board.CaptureFlag == 0 && e.Board.Ply < 64 {
+			if move.Flags()&engine.CaptureFlag == 0 && e.Board.Ply < 64 {
 				if move != e.KillerMoves[e.Board.Ply][0] {
 					e.KillerMoves[e.Board.Ply][1] = e.KillerMoves[e.Board.Ply][0]
 					e.KillerMoves[e.Board.Ply][0] = move
@@ -359,12 +359,12 @@ func (e *Engine) quiescence(alpha, beta int) int {
 
 	ml := e.Board.GenerateMoves()
 	// Order moves in quiescence search too (captures only)
-	e.orderMoves(&ml, board.NoMove)
+	e.orderMoves(&ml, engine.NoMove)
 
 	for i := 0; i < ml.Count; i++ {
 		move := ml.Moves[i]
 		// In quiescence, we only look at captures.
-		if move.Flags()&board.CaptureFlag == 0 {
+		if move.Flags()&engine.CaptureFlag == 0 {
 			continue
 		}
 
@@ -405,7 +405,7 @@ var mvvLva = [7][7]int{
 }
 
 // orderMoves sorts moves to improve alpha-beta pruning efficiency.
-func (e *Engine) orderMoves(ml *board.MoveList, ttMove board.Move) {
+func (e *Engine) orderMoves(ml *engine.MoveList, ttMove engine.Move) {
 	scores := make([]int, ml.Count)
 
 	for i := 0; i < ml.Count; i++ {
@@ -419,12 +419,12 @@ func (e *Engine) orderMoves(ml *board.MoveList, ttMove board.Move) {
 
 		flags := move.Flags()
 
-		if flags&board.CaptureFlag != 0 {
+		if flags&engine.CaptureFlag != 0 {
 			attacker := e.Board.PieceAt(move.From()).Type()
 			victim := e.Board.PieceAt(move.To()).Type()
 
-			if flags == board.EnPassantFlag {
-				victim = board.Pawn
+			if flags == engine.EnPassantFlag {
+				victim = engine.Pawn
 			}
 
 			// Prioritize winning/equal captures using SEE

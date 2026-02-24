@@ -1,0 +1,287 @@
+package protocol
+
+import (
+	"bufio"
+	"fmt"
+	"io"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/personal-github/axon-engine/internal/engine"
+	"github.com/personal-github/axon-engine/internal/search"
+)
+
+const startFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+
+// Protocol manages UCI protocol communication.
+type Protocol struct {
+	reader *bufio.Scanner
+	writer io.Writer
+	board  *engine.Board
+	search *search.Engine
+}
+
+// NewProtocol creates a new Protocol handler.
+func NewProtocol(input io.Reader, output io.Writer) *Protocol {
+	return &Protocol{
+		reader: bufio.NewScanner(input),
+		writer: output,
+		board:  engine.NewBoard(),
+	}
+}
+
+// Start begins the main loop for processing UCI commands.
+func (p *Protocol) Start() {
+	for p.reader.Scan() {
+		line := strings.TrimSpace(p.reader.Text())
+		if line == "" {
+			continue
+		}
+
+		parts := strings.Fields(line)
+		command := parts[0]
+
+		switch command {
+		case "uci":
+			p.handleUCI()
+		case "isready":
+			p.handleIsReady()
+		case "position":
+			p.handlePosition(parts)
+		case "go":
+			p.handleGo(parts)
+		case "stop":
+			p.handleStop()
+		case "ucinewgame":
+			p.handleUCINewGame()
+		case "setoption":
+			p.handleSetOption(parts)
+		case "d":
+			p.handleDisplay()
+		case "quit":
+			return
+		default:
+			// Ignore unknown commands for now
+		}
+	}
+}
+
+func (p *Protocol) handleUCI() {
+	p.send("id name Axon Engine")
+	p.send("id author Axon Team")
+	p.send("option name Hash type spin default 64 min 1 max 1024")
+	p.send("uciok")
+}
+
+func (p *Protocol) handleIsReady() {
+	p.send("readyok")
+}
+
+func (p *Protocol) handlePosition(parts []string) {
+	if len(parts) < 2 {
+		return
+	}
+
+	var fen string
+	moveIndex := -1
+
+	for i, part := range parts {
+		if part == "moves" {
+			moveIndex = i
+			break
+		}
+	}
+
+	if parts[1] == "startpos" {
+		fen = startFEN
+	} else if parts[1] == "fen" {
+		endIndex := len(parts)
+		if moveIndex != -1 {
+			endIndex = moveIndex
+		}
+		if endIndex <= 2 {
+			return
+		}
+		fen = strings.Join(parts[2:endIndex], " ")
+	} else {
+		return
+	}
+
+	p.board.SetFEN(fen)
+
+	if moveIndex != -1 {
+		for i := moveIndex + 1; i < len(parts); i++ {
+			move := p.parseMove(parts[i])
+			if move != engine.NoMove {
+				p.board.MakeMove(move)
+			}
+		}
+	}
+}
+
+func (p *Protocol) parseMove(moveStr string) engine.Move {
+	ml := p.board.GenerateMoves()
+	for i := 0; i < ml.Count; i++ {
+		m := ml.Moves[i]
+
+		// Verify legality by making and unmaking the move
+		if !p.board.MakeMove(m) {
+			continue
+		}
+		p.board.UnmakeMove(m)
+
+		s := fmt.Sprintf("%s%s", m.From().String(), m.To().String())
+
+		if len(moveStr) == 5 {
+			var pStr string
+			switch m.Flags() & 0xB000 {
+			case engine.PromoQueen:
+				pStr = "q"
+			case engine.PromoRook:
+				pStr = "r"
+			case engine.PromoBishop:
+				pStr = "b"
+			case engine.PromoKnight:
+				pStr = "n"
+			}
+			if s+pStr == moveStr {
+				return m
+			}
+		} else if s == moveStr {
+			return m
+		}
+	}
+	return engine.NoMove
+}
+
+func (p *Protocol) handleGo(parts []string) {
+	if p.search != nil {
+		p.search.Stopped = true
+	}
+
+	p.search = search.NewEngine(p.board)
+	depth := 64
+	var timeLimit time.Duration
+
+	wtime, btime := 0, 0
+	winc, binc := 0, 0
+	movestogo := 30
+
+	for i := 1; i < len(parts); i++ {
+		switch parts[i] {
+		case "depth":
+			if i+1 < len(parts) {
+				if d, err := strconv.Atoi(parts[i+1]); err == nil {
+					depth = d
+				}
+				i++
+			}
+		case "wtime":
+			if i+1 < len(parts) {
+				wtime, _ = strconv.Atoi(parts[i+1])
+				i++
+			}
+		case "btime":
+			if i+1 < len(parts) {
+				btime, _ = strconv.Atoi(parts[i+1])
+				i++
+			}
+		case "winc":
+			if i+1 < len(parts) {
+				winc, _ = strconv.Atoi(parts[i+1])
+				i++
+			}
+		case "binc":
+			if i+1 < len(parts) {
+				binc, _ = strconv.Atoi(parts[i+1])
+				i++
+			}
+		case "movestogo":
+			if i+1 < len(parts) {
+				movestogo, _ = strconv.Atoi(parts[i+1])
+				i++
+			}
+		case "infinite":
+			depth = 64
+		}
+	}
+
+	if p.board.SideToMove == engine.White && wtime > 0 {
+		timeLimit = time.Duration(wtime/movestogo+winc) * time.Millisecond
+	} else if p.board.SideToMove == engine.Black && btime > 0 {
+		timeLimit = time.Duration(btime/movestogo+binc) * time.Millisecond
+	}
+
+	if timeLimit > 0 {
+		timeLimit -= 50 * time.Millisecond
+		if timeLimit < 10*time.Millisecond {
+			timeLimit = 10 * time.Millisecond
+		}
+		p.search.TimeLimit = timeLimit
+	}
+
+	go func(e *search.Engine, d int) {
+		bestMove := e.Search(d)
+
+		if bestMove == engine.NoMove {
+			ml := p.board.GenerateMoves()
+			if ml.Count > 0 {
+				bestMove = ml.Moves[0]
+			} else {
+				return
+			}
+		}
+
+		moveStr := fmt.Sprintf("%s%s", bestMove.From().String(), bestMove.To().String())
+		if bestMove.Flags()&0x8000 != 0 {
+			switch bestMove.Flags() & 0xB000 {
+			case engine.PromoQueen:
+				moveStr += "q"
+			case engine.PromoRook:
+				moveStr += "r"
+			case engine.PromoBishop:
+				moveStr += "b"
+			case engine.PromoKnight:
+				moveStr += "n"
+			}
+		}
+
+		p.send(fmt.Sprintf("bestmove %s", moveStr))
+	}(p.search, depth)
+}
+
+func (p *Protocol) handleStop() {
+	if p.search != nil {
+		p.search.Stopped = true
+	}
+}
+
+func (p *Protocol) handleUCINewGame() {
+	p.board.Clear()
+	p.board.SetFEN(startFEN)
+	search.GlobalTT.Clear()
+}
+
+func (p *Protocol) handleSetOption(parts []string) {
+	if len(parts) < 5 || parts[1] != "name" || parts[3] != "value" {
+		return
+	}
+
+	name := strings.ToLower(parts[2])
+	value := parts[4]
+
+	if name == "hash" {
+		if size, err := strconv.Atoi(value); err == nil {
+			search.GlobalTT = search.NewTranspositionTable(size)
+		}
+	}
+}
+
+func (p *Protocol) handleDisplay() {
+	p.send(p.board.String())
+}
+
+func (p *Protocol) send(msg string) {
+	fmt.Fprintln(p.writer, msg)
+}

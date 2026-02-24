@@ -1,4 +1,4 @@
-package board
+package engine
 
 // KingAttacks stores precomputed bitboards of all possible king moves for each square.
 var KingAttacks [64]Bitboard

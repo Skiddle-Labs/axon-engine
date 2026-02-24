@@ -64,7 +64,7 @@ Axon is a command-line engine. You can run it directly and type UCI commands, or
 - `/internal/board`: Bitboards, Move Generation, SEE, and Zobrist Hashing.
 - `/internal/search`: PVS logic, Transposition Table, and Move Ordering.
 - `/internal/eval`: Tapered evaluation and positional heuristics.
-- `/internal/uci`: UCI protocol communication layer.
+- `/internal/protocol`: UCI protocol communication layer.
 
 ## License
 This project is licensed under the MIT License.

@@ -1,6 +1,6 @@
-package board
+package engine
 
-var seeValues = [7]int{0, 100, 300, 300, 500, 900, 20000}
+var PieceValues = [7]int{0, 100, 300, 300, 500, 900, 20000}
 
 // SEE (Static Exchange Evaluation) determines the material balance of a series
 // of captures on a single square. It returns a score in centipawns.
@@ -20,12 +20,12 @@ func (b *Board) SEE(m Move) int {
 
 	// gain[d] stores the material gain at depth d
 	gain := make([]int, 64)
-	gain[0] = seeValues[victimType]
+	gain[0] = PieceValues[victimType]
 
 	occ := b.Occupancy()
 	occ.Clear(from)
 
-	attackers := b.allAttackers(to, occ)
+	attackers := b.AllAttackers(to, occ)
 	us := b.SideToMove ^ 1
 	d := 1
 
@@ -36,11 +36,11 @@ func (b *Board) SEE(m Move) int {
 		}
 
 		// Update gain and board state for the next capture
-		gain[d] = seeValues[atType] - gain[d-1]
+		gain[d] = PieceValues[atType] - gain[d-1]
 
 		// Remove the attacker and find new attackers (including discovered X-rays)
 		occ.Clear(atSq)
-		attackers = b.allAttackers(to, occ)
+		attackers = b.AllAttackers(to, occ)
 
 		us ^= 1
 		d++
@@ -54,8 +54,8 @@ func (b *Board) SEE(m Move) int {
 	return gain[0]
 }
 
-// allAttackers returns a bitboard of all pieces attacking the given square.
-func (b *Board) allAttackers(sq Square, occ Bitboard) Bitboard {
+// AllAttackers returns a bitboard of all pieces attacking the given square.
+func (b *Board) AllAttackers(sq Square, occ Bitboard) Bitboard {
 	var attackers Bitboard
 
 	// Pawns: Use the "reverse" attack patterns

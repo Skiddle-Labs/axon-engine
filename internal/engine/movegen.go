@@ -1,4 +1,4 @@
-package board
+package engine
 
 // GenerateMoves generates all pseudo-legal moves for the current board position.
 // Pseudo-legal moves include moves that might leave the king in check.

@@ -1,4 +1,4 @@
-package board
+package engine
 
 var castlingMask = [64]CastlingRights{
 	13, 15, 15, 15, 12, 15, 15, 14,
