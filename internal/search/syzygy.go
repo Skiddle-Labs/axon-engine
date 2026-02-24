@@ -1,20 +1,22 @@
 package search
 
 import (
+	"log"
 	"sync"
 	"sync/atomic"
 
 	"github.com/personal-github/axon-engine/internal/engine"
+	"github.com/personal-github/axon-engine/internal/syzygy"
 )
 
 // WDL (Win-Draw-Loss) results from Syzygy tablebases.
 const (
-	WDLWin      = 2
-	WDLBlessed  = 1
-	WDLDraw     = 0
-	WDLCursed   = -1
-	WDLLoss     = -2
-	WDLNotFound = -3
+	WDLWin      = syzygy.WDLWin
+	WDLBlessed  = syzygy.WDLBlessed
+	WDLDraw     = syzygy.WDLDraw
+	WDLCursed   = syzygy.WDLCursed
+	WDLLoss     = syzygy.WDLLoss
+	WDLNotFound = syzygy.WDLNotFound
 )
 
 // Tablebase represents a Syzygy tablebase prober.
@@ -38,8 +40,11 @@ func NewTablebase(path string) *Tablebase {
 		path: path,
 	}
 
-	// In a real implementation, we would load the .rtbw and .rtbz files here.
-	// For now, this is a placeholder for search integration.
+	if err := syzygy.Init(path); err != nil {
+		log.Printf("Syzygy error: %v", err)
+		return nil
+	}
+
 	atomic.StoreInt32(&tb.active, 1)
 
 	return tb
@@ -59,16 +64,17 @@ func (tb *Tablebase) ProbeWDL(b *engine.Board) (int, bool) {
 	// We only probe if the piece count is within the tablebase range.
 	pieceCount := b.Colors[engine.White].Count() + b.Colors[engine.Black].Count()
 
-	if pieceCount > 6 { // Most common Syzygy sets are up to 6 pieces
+	if pieceCount > 7 {
 		return WDLNotFound, false
 	}
 
-	// TODO: Integrate actual Syzygy probing logic using a Go library (like niklasf/syzygy)
-	// or a C wrapper for Fathom.
-	//
-	// Probing logic would go here.
+	res, ok := syzygy.ProbeWDL(b)
+	if !ok {
+		return WDLNotFound, false
+	}
 
-	return WDLNotFound, false
+	// Map syzygy package constants to search package constants (they match)
+	return int(res), true
 }
 
 // SyzygyScore returns a search score based on the WDL value.

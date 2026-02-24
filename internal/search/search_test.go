@@ -92,6 +92,9 @@ func TestSearch_Repetition(t *testing.T) {
 
 // TestSearch_NullMovePruning verifies that NMP is active.
 func TestSearch_NullMovePruning(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping search depth test in short mode.")
+	}
 	b := engine.NewBoard()
 	b.SetFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
 
@@ -149,6 +152,9 @@ func TestSearch_QuiescenceCheck(t *testing.T) {
 
 // TestSearch_RFP verifies that Static Null Move Pruning is integrated.
 func TestSearch_RFP(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping search depth test in short mode.")
+	}
 	b := engine.NewBoard()
 	// Winning position for white, static eval should be high
 	b.SetFEN("k7/8/8/8/8/4B3/4Q3/K7 w - - 0 1")
@@ -160,6 +166,9 @@ func TestSearch_RFP(t *testing.T) {
 
 // TestSearch_LMP verifies that Late Move Pruning is integrated.
 func TestSearch_LMP(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping search depth test in short mode.")
+	}
 	b := engine.NewBoard()
 	b.SetFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
 
@@ -169,6 +178,9 @@ func TestSearch_LMP(t *testing.T) {
 
 // TestSearch_CounterMoves verifies that countermoves are tracked.
 func TestSearch_CounterMoves(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping search depth test in short mode.")
+	}
 	b := engine.NewBoard()
 	b.SetFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
 
@@ -192,6 +204,9 @@ func TestSearch_CounterMoves(t *testing.T) {
 
 // TestSearch_SingularExtensions verifies that singular extensions don't crash.
 func TestSearch_SingularExtensions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping search depth test in short mode.")
+	}
 	b := engine.NewBoard()
 	// Forced move position
 	b.SetFEN("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2")

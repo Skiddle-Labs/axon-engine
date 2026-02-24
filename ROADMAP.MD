@@ -2,7 +2,7 @@
 
 This document tracks the planned improvements and current progress of the Axon chess engine.
 
-## 1. Search Enhancements (Current Focus)
+## 1. Search Enhancements
 - [x] **Static Null Move Pruning (Reverse Futility Pruning)**: Prune nodes where static evaluation is significantly above beta at low depths.
 - [x] **Late Move Pruning (LMP)**: Prune quiet moves at high move counts in late search nodes.
 - [x] **Dynamic Time Management**: Implement evaluation-based and move-stability-based time allocation.
@@ -16,8 +16,8 @@ This document tracks the planned improvements and current progress of the Axon c
 - [x] **King Safety Refinement**: Implement a more granular pawn shield and attacking zone evaluation.
 - [ ] **NNUE Implementation**: Implement a neural network evaluation as a final step while retaining HCE for speed and data generation.
 
-## 3. Infrastructure & Features
-- [ ] **Syzygy Tablebase Support**: Perfect endgame play using 3-4-5-6 piece tablebases (Scaffolding implemented).
+## 3. Infrastructure & Features (Current Focus)
+- [ ] **Syzygy Tablebase Support**: Implementing real Win-Draw-Loss (WDL) probing for 3-4-5-6 piece endgames.
 - [x] **Benchmarking Tool**: Implement a `bench` command for consistent performance measurement across different builds.
 - [x] **Opening Book Support**: Add Polyglot (.bin) support with weighted random and best-move selection strategies.
 - [ ] **Logging System**: Implement structured logging for better debugging in engine-vs-engine matches.

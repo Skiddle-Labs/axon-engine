@@ -65,12 +65,14 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 	e.localNodes = 0
 	e.StartTime = time.Now()
 	atomic.StoreInt32(e.Stopped, 0)
+
 	globalBestMove := engine.NoMove
+	lastBestMove := engine.NoMove
+	lastScore := 0
+	stability := 0
 
 	// Syzygy Tablebase Root Probe
 	if wdl, ok := GlobalTB.ProbeWDL(e.Board); ok {
-		// If we know the result from TB, we could potentially stop or adjust search.
-		// For now, we report the info and continue.
 		score := SyzygyScore(wdl, 0)
 		fmt.Printf("info string Syzygy TB found: wdl %d score %d\n", wdl, score)
 	}
@@ -92,13 +94,11 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 			helper.Nodes = e.Nodes
 			helper.Stopped = e.Stopped
 
-			// Helper threads perform search with depth variations to improve tree coverage.
 			for d := 1; d <= maxDepth+2; d++ {
 				if atomic.LoadInt32(e.Stopped) != 0 {
 					break
 				}
 
-				// Apply depth offsets: odd threads look deeper, even threads look shallower.
 				depth := d
 				if threadID%2 != 0 {
 					depth = d + 1
@@ -115,19 +115,14 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 			helper.syncNodes()
 		}(t)
 	}
+
 	defer func() {
 		atomic.StoreInt32(e.Stopped, 1)
 		wg.Wait()
 		e.syncNodes()
 	}()
 
-	lastScore := 0
-	lastBestMove := engine.NoMove
-	stability := 0
-
 	for depth := 1; depth <= maxDepth; depth++ {
-		// Soft limit: stop iterative deepening if we've exceeded the soft time limit.
-		// If the best move is stable, we can afford to stop early.
 		adjustedSoftLimit := e.SoftLimit
 		if depth > 5 && stability >= 3 {
 			adjustedSoftLimit /= 2
@@ -142,27 +137,36 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 		for pv := 1; pv <= e.MultiPV; pv++ {
 			alpha := -Infinity
 			beta := Infinity
-			delta := 50
+			delta := 15
 
 			if depth > 4 && pv == 1 {
 				alpha = lastScore - delta
 				beta = lastScore + delta
 			}
 
+			bestMoveAtDepth := engine.NoMove
+			scoreAtDepth := -Infinity
+
 			for {
-				bestMove := engine.NoMove
-				score := -Infinity
+				if alpha < -MateScore {
+					alpha = -Infinity
+				}
+				if beta > MateScore {
+					beta = Infinity
+				}
+
+				scoreAtDepth = -Infinity
+				bestMoveAtDepth = engine.NoMove
 
 				ml := e.Board.GenerateMoves()
-				// Probe TT for the best move to order it first
 				_, ttMove, _ := e.TT.Probe(e.Board.Hash, depth, alpha, beta, e.Board.Ply)
 				e.orderMoves(&ml, ttMove)
 
 				currAlpha := alpha
+				legalMoves := 0
 				for i := 0; i < ml.Count; i++ {
 					move := ml.Moves[i]
 
-					// MultiPV: skip moves already found for this depth
 					skip := false
 					for _, m := range multiPVBestMoves {
 						if move == m {
@@ -177,26 +181,22 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 					if !e.Board.MakeMove(move) {
 						continue
 					}
+					legalMoves++
 
 					var s int
-					if i == 0 {
-						// Full search for first move
+					if legalMoves == 1 {
 						s = -e.negamax(depth-1, -beta, -currAlpha, engine.NoMove)
 					} else {
-						// LMR at root (mild)
 						reduction := 0
 						if depth >= 3 && i >= 6 && move.Flags()&engine.CaptureFlag == 0 && move.Flags()&0x8000 == 0 {
 							reduction = 1
 						}
 
-						// Principal Variation Search (PVS) with null window
 						s = -e.negamax(depth-1-reduction, -(currAlpha + 1), -currAlpha, engine.NoMove)
 
-						// Re-search if reduced move beats alpha
 						if s > currAlpha && reduction > 0 {
 							s = -e.negamax(depth-1, -(currAlpha + 1), -currAlpha, engine.NoMove)
 						}
-						// Re-search with full window if null window search beats alpha
 						if s > currAlpha && s < beta {
 							s = -e.negamax(depth-1, -beta, -currAlpha, engine.NoMove)
 						}
@@ -208,9 +208,9 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 						break
 					}
 
-					if s > score {
-						score = s
-						bestMove = move
+					if s > scoreAtDepth {
+						scoreAtDepth = s
+						bestMoveAtDepth = move
 					}
 					if s > currAlpha {
 						currAlpha = s
@@ -221,57 +221,36 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 					break
 				}
 
-				if score <= alpha {
+				if scoreAtDepth <= alpha {
 					alpha -= delta
 					delta *= 2
-					if alpha < -Infinity {
-						alpha = -Infinity
-					}
-				} else if score >= beta {
+				} else if scoreAtDepth >= beta {
 					beta += delta
 					delta *= 2
-					if beta > Infinity {
-						beta = Infinity
-					}
 				} else {
-					if bestMove != engine.NoMove {
-						if pv == 1 {
-							lastScore = score
-							globalBestMove = bestMove
+					if pv == 1 {
+						lastScore = scoreAtDepth
+						if bestMoveAtDepth != engine.NoMove {
+							if bestMoveAtDepth == lastBestMove {
+								stability++
+							} else {
+								stability = 0
+								lastBestMove = bestMoveAtDepth
+							}
+							globalBestMove = bestMoveAtDepth
 						}
-						multiPVBestMoves = append(multiPVBestMoves, bestMove)
-						e.printInfo(depth, score, bestMove, pv)
+					}
+					if bestMoveAtDepth != engine.NoMove {
+						multiPVBestMoves = append(multiPVBestMoves, bestMoveAtDepth)
+						e.printInfo(depth, scoreAtDepth, bestMoveAtDepth, pv)
 					}
 					break
 				}
-
-				if alpha == -Infinity && beta == Infinity {
-					if bestMove != engine.NoMove {
-						if pv == 1 {
-							lastScore = score
-							globalBestMove = bestMove
-						}
-						multiPVBestMoves = append(multiPVBestMoves, bestMove)
-						e.printInfo(depth, score, bestMove, pv)
-					}
-					break
-				}
-			}
-
-			if atomic.LoadInt32(e.Stopped) != 0 {
-				break
 			}
 		}
 
 		if atomic.LoadInt32(e.Stopped) != 0 {
 			break
-		}
-
-		if globalBestMove == lastBestMove {
-			stability++
-		} else {
-			stability = 0
-			lastBestMove = globalBestMove
 		}
 	}
 

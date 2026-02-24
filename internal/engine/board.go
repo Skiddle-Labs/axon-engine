@@ -212,6 +212,104 @@ func (b *Board) SetFEN(fen string) error {
 	return nil
 }
 
+// FEN returns the FEN string representing the current board state.
+func (b *Board) FEN() string {
+	var sb strings.Builder
+
+	// 1. Piece placement
+	for r := 7; r >= 0; r-- {
+		empty := 0
+		for f := 0; f < 8; f++ {
+			p := b.PieceAt(NewSquare(f, r))
+			if p == NoPiece {
+				empty++
+			} else {
+				if empty > 0 {
+					sb.WriteString(strconv.Itoa(empty))
+					empty = 0
+				}
+				char := ""
+				switch p {
+				case WhitePawn:
+					char = "P"
+				case WhiteKnight:
+					char = "N"
+				case WhiteBishop:
+					char = "B"
+				case WhiteRook:
+					char = "R"
+				case WhiteQueen:
+					char = "Q"
+				case WhiteKing:
+					char = "K"
+				case BlackPawn:
+					char = "p"
+				case BlackKnight:
+					char = "n"
+				case BlackBishop:
+					char = "b"
+				case BlackRook:
+					char = "r"
+				case BlackQueen:
+					char = "q"
+				case BlackKing:
+					char = "k"
+				}
+				sb.WriteString(char)
+			}
+		}
+		if empty > 0 {
+			sb.WriteString(strconv.Itoa(empty))
+		}
+		if r > 0 {
+			sb.WriteString("/")
+		}
+	}
+
+	// 2. Side to move
+	if b.SideToMove == White {
+		sb.WriteString(" w ")
+	} else {
+		sb.WriteString(" b ")
+	}
+
+	// 3. Castling rights
+	if b.Castling == 0 {
+		sb.WriteString("-")
+	} else {
+		if b.Castling&WhiteKingside != 0 {
+			sb.WriteString("K")
+		}
+		if b.Castling&WhiteQueenside != 0 {
+			sb.WriteString("Q")
+		}
+		if b.Castling&BlackKingside != 0 {
+			sb.WriteString("k")
+		}
+		if b.Castling&BlackQueenside != 0 {
+			sb.WriteString("q")
+		}
+	}
+
+	// 4. En passant square
+	sb.WriteString(" ")
+	if b.EnPassant == NoSquare {
+		sb.WriteString("-")
+	} else {
+		sb.WriteString(b.EnPassant.String())
+	}
+
+	// 5. Halfmove clock
+	sb.WriteString(" ")
+	sb.WriteString(strconv.Itoa(int(b.HalfMoveClock)))
+
+	// 6. Fullmove number
+	sb.WriteString(" ")
+	sb.WriteString(strconv.Itoa(int(b.FullMoveNumber)))
+
+	return sb.String()
+}
+
 // Clear resets the board to an empty state.
 func (b *Board) Clear() {
 	b.Pieces = [2][7]Bitboard{}
