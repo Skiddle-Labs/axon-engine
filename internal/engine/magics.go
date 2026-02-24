@@ -2,33 +2,33 @@ package engine
 
 import "math/rand"
 
-// Magic holds the data needed for magic bitboard lookups for a single square.
-type Magic struct {
-	Mask  Bitboard
-	Magic uint64
-	Shift uint8
+// magic holds the data needed for magic bitboard lookups for a single square.
+type magic struct {
+	mask  Bitboard
+	magic uint64
+	shift uint8
 }
 
-var RookMagics [64]Magic
-var BishopMagics [64]Magic
-var RookTable [64][]Bitboard
-var BishopTable [64][]Bitboard
+var rookMagics [64]magic
+var bishopMagics [64]magic
+var rookTable [64][]Bitboard
+var bishopTable [64][]Bitboard
 
-// GetIndex returns the index for the given occupancy.
-func (m *Magic) GetIndex(occ Bitboard) int {
-	return int(((uint64(occ&m.Mask) * m.Magic) >> m.Shift))
+// getIndex returns the index for the given occupancy.
+func (m *magic) getIndex(occ Bitboard) int {
+	return int(((uint64(occ&m.mask) * m.magic) >> m.shift))
 }
 
 // GetRookAttacks returns the squares attacked by a rook on the given square,
 // considering the current board occupancy, using magic bitboards.
 func GetRookAttacks(sq Square, occupancy Bitboard) Bitboard {
-	return RookTable[sq][RookMagics[sq].GetIndex(occupancy)]
+	return rookTable[sq][rookMagics[sq].getIndex(occupancy)]
 }
 
 // GetBishopAttacks returns the squares attacked by a bishop on the given square,
 // considering the current board occupancy, using magic bitboards.
 func GetBishopAttacks(sq Square, occupancy Bitboard) Bitboard {
-	return BishopTable[sq][BishopMagics[sq].GetIndex(occupancy)]
+	return bishopTable[sq][bishopMagics[sq].getIndex(occupancy)]
 }
 
 // GetQueenAttacks returns the squares attacked by a queen on the given square,
@@ -158,7 +158,7 @@ func generateOccupancy(index int, bits int, mask Bitboard) Bitboard {
 }
 
 // findMagic finds a magic number for a square by trial and error.
-func findMagic(sq Square, mask Bitboard, bits uint8, isRook bool, rng *rand.Rand) (Magic, []Bitboard) {
+func findMagic(sq Square, mask Bitboard, bits uint8, isRook bool, rng *rand.Rand) (magic, []Bitboard) {
 	numOcc := 1 << bits
 	occupancies := make([]Bitboard, numOcc)
 	attacks := make([]Bitboard, numOcc)
@@ -179,11 +179,11 @@ func findMagic(sq Square, mask Bitboard, bits uint8, isRook bool, rng *rand.Rand
 	for {
 		epoch++
 		magicNum := rng.Uint64() & rng.Uint64() & rng.Uint64()
-		m := Magic{Mask: mask, Magic: magicNum, Shift: 64 - bits}
+		m := magic{mask: mask, magic: magicNum, shift: 64 - bits}
 
 		fail := false
 		for i := 0; i < numOcc; i++ {
-			idx := m.GetIndex(occupancies[i])
+			idx := m.getIndex(occupancies[i])
 			if used[idx] != epoch {
 				used[idx] = epoch
 				table[idx] = attacks[i]
@@ -200,7 +200,7 @@ func findMagic(sq Square, mask Bitboard, bits uint8, isRook bool, rng *rand.Rand
 	}
 }
 
-var RookRelevantBits = [64]uint8{
+var rookRelevantBits = [64]uint8{
 	12, 11, 11, 11, 11, 11, 11, 12,
 	11, 10, 10, 10, 10, 10, 10, 11,
 	11, 10, 10, 10, 10, 10, 10, 11,
@@ -211,7 +211,7 @@ var RookRelevantBits = [64]uint8{
 	12, 11, 11, 11, 11, 11, 11, 12,
 }
 
-var BishopRelevantBits = [64]uint8{
+var bishopRelevantBits = [64]uint8{
 	6, 5, 5, 5, 5, 5, 5, 6,
 	5, 5, 5, 5, 5, 5, 5, 5,
 	5, 5, 7, 7, 7, 7, 5, 5,
@@ -226,7 +226,7 @@ func init() {
 	rng := rand.New(rand.NewSource(42))
 	for sq := 0; sq < 64; sq++ {
 		s := Square(sq)
-		RookMagics[sq], RookTable[sq] = findMagic(s, maskRookOccupancy(s), RookRelevantBits[sq], true, rng)
-		BishopMagics[sq], BishopTable[sq] = findMagic(s, maskBishopOccupancy(s), BishopRelevantBits[sq], false, rng)
+		rookMagics[sq], rookTable[sq] = findMagic(s, maskRookOccupancy(s), rookRelevantBits[sq], true, rng)
+		bishopMagics[sq], bishopTable[sq] = findMagic(s, maskBishopOccupancy(s), bishopRelevantBits[sq], false, rng)
 	}
 }
