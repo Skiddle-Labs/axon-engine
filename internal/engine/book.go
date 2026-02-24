@@ -24,14 +24,14 @@ func init() {
 	}
 
 	// Piece keys: 12 pieces * 64 squares
-	// Order: White Pawn, Knight, Bishop, Rook, Queen, King, then Black...
+	// Order: White Pawn, Black Pawn, White Knight, Black Knight, ...
 	for p := 0; p < 12; p++ {
 		for s := 0; s < 64; s++ {
 			polyglotPieceKeys[p][s] = getNext()
 		}
 	}
 
-	// Castle keys: 4 bits (White KS, White QS, Black KS, Black QS)
+	// Castle keys: 16 keys for 4 bits of castling rights
 	for i := 0; i < 16; i++ {
 		polyglotCastleKeys[i] = getNext()
 	}
@@ -182,12 +182,12 @@ func (b *PolyglotBook) ComputePolyglotHash(board *Board) uint64 {
 		sq := Square(s)
 		piece := board.PieceAt(sq)
 		if piece != NoPiece {
-			// Polyglot piece mapping
-			pIdx := int(piece.Type() - 1)
+			// Polyglot piece mapping: WP, BP, WN, BN, WB, BB, WR, BR, WQ, BQ, WK, BK
+			pIdx := 2 * int(piece.Type()-1)
 			if piece.Color() == Black {
-				pIdx += 6
+				pIdx++
 			}
-			// Polyglot uses rank*8 + file
+			// Polyglot uses rank*8 + file where A1=0, H8=63
 			hash ^= polyglotPieceKeys[pIdx][s]
 		}
 	}
