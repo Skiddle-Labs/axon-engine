@@ -10,6 +10,7 @@ type CastlingRights uint8
 
 // State represents the irreversible state of the board, used for unmaking moves.
 type State struct {
+	Move          Move
 	EnPassant     Square
 	Castling      CastlingRights
 	HalfMoveClock uint8

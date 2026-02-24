@@ -20,18 +20,21 @@ var GlobalTT = NewTranspositionTable(64)
 
 // Engine handles the search process.
 type Engine struct {
-	Board     *engine.Board
-	Nodes     *uint64
-	StartTime time.Time
-	TimeLimit time.Duration
-	Stopped   *int32
-	TT        *TranspositionTable
+	Board      *engine.Board
+	Nodes      *uint64
+	StartTime  time.Time
+	TimeLimit  time.Duration // Hard limit: stop immediately
+	SoftLimit  time.Duration // Soft limit: don't start new depth
+	NodesLimit uint64
+	Stopped    *int32
+	TT         *TranspositionTable
 
 	Threads int
 	MultiPV int
 
 	KillerMoves  [64][2]engine.Move
 	HistoryTable [2][64][64]int
+	CounterMoves [64][64]engine.Move
 }
 
 // NewEngine creates a new search engine instance.
@@ -54,6 +57,11 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 	e.StartTime = time.Now()
 	atomic.StoreInt32(e.Stopped, 0)
 	globalBestMove := engine.NoMove
+
+	// If SoftLimit is not explicitly set, use 60% of TimeLimit as a default.
+	if e.SoftLimit == 0 && e.TimeLimit > 0 {
+		e.SoftLimit = (e.TimeLimit * 6) / 10
+	}
 
 	// Launch helper threads for Lazy SMP
 	var wg sync.WaitGroup
@@ -85,7 +93,7 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 					depth = 1
 				}
 
-				helper.negamax(depth, -Infinity, Infinity)
+				helper.negamax(depth, -Infinity, Infinity, engine.NoMove)
 			}
 		}(t)
 	}
@@ -95,7 +103,21 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 	}()
 
 	lastScore := 0
+	lastBestMove := engine.NoMove
+	stability := 0
+
 	for depth := 1; depth <= maxDepth; depth++ {
+		// Soft limit: stop iterative deepening if we've exceeded the soft time limit.
+		// If the best move is stable, we can afford to stop early.
+		adjustedSoftLimit := e.SoftLimit
+		if depth > 5 && stability >= 3 {
+			adjustedSoftLimit /= 2
+		}
+
+		if depth > 1 && adjustedSoftLimit > 0 && time.Since(e.StartTime) >= adjustedSoftLimit {
+			break
+		}
+
 		multiPVBestMoves := make([]engine.Move, 0, e.MultiPV)
 
 		for pv := 1; pv <= e.MultiPV; pv++ {
@@ -140,7 +162,7 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 					var s int
 					if i == 0 {
 						// Full search for first move
-						s = -e.negamax(depth-1, -beta, -currAlpha)
+						s = -e.negamax(depth-1, -beta, -currAlpha, engine.NoMove)
 					} else {
 						// LMR at root (mild)
 						reduction := 0
@@ -149,15 +171,15 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 						}
 
 						// Principal Variation Search (PVS) with null window
-						s = -e.negamax(depth-1-reduction, -(currAlpha + 1), -currAlpha)
+						s = -e.negamax(depth-1-reduction, -(currAlpha + 1), -currAlpha, engine.NoMove)
 
 						// Re-search if reduced move beats alpha
 						if s > currAlpha && reduction > 0 {
-							s = -e.negamax(depth-1, -(currAlpha + 1), -currAlpha)
+							s = -e.negamax(depth-1, -(currAlpha + 1), -currAlpha, engine.NoMove)
 						}
 						// Re-search with full window if null window search beats alpha
 						if s > currAlpha && s < beta {
-							s = -e.negamax(depth-1, -beta, -currAlpha)
+							s = -e.negamax(depth-1, -beta, -currAlpha, engine.NoMove)
 						}
 					}
 
@@ -225,16 +247,26 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 		if atomic.LoadInt32(e.Stopped) != 0 {
 			break
 		}
+
+		if globalBestMove == lastBestMove {
+			stability++
+		} else {
+			stability = 0
+			lastBestMove = globalBestMove
+		}
 	}
 
 	return globalBestMove
 }
 
 // negamax is the core search algorithm with alpha-beta pruning.
-func (e *Engine) negamax(depth, alpha, beta int) int {
+func (e *Engine) negamax(depth, alpha, beta int, excludedMove engine.Move) int {
 	nodes := atomic.AddUint64(e.Nodes, 1)
-	if nodes&2047 == 0 && e.TimeLimit > 0 && time.Since(e.StartTime) >= e.TimeLimit {
-		atomic.StoreInt32(e.Stopped, 1)
+	if nodes&2047 == 0 {
+		if (e.TimeLimit > 0 && time.Since(e.StartTime) >= e.TimeLimit) ||
+			(e.NodesLimit > 0 && nodes >= e.NodesLimit) {
+			atomic.StoreInt32(e.Stopped, 1)
+		}
 	}
 
 	if atomic.LoadInt32(e.Stopped) != 0 {
@@ -243,7 +275,7 @@ func (e *Engine) negamax(depth, alpha, beta int) int {
 
 	// 1. TT Probe
 	ttScore, ttMove, found := e.TT.Probe(e.Board.Hash, depth, alpha, beta, e.Board.Ply)
-	if found {
+	if found && excludedMove == engine.NoMove {
 		return ttScore
 	}
 
@@ -264,12 +296,41 @@ func (e *Engine) negamax(depth, alpha, beta int) int {
 		return e.quiescence(alpha, beta)
 	}
 
+	// Singular Extensions
+	// If we have a very strong move from the TT, verify that no other move is nearly as good.
+	extension := 0
+	if depth >= 8 && ttMove != engine.NoMove && excludedMove == engine.NoMove {
+		// We use a lower depth to verify singularity
+		_, _, ttFound := e.TT.Probe(e.Board.Hash, depth, alpha, beta, e.Board.Ply)
+		if ttFound {
+			// Search all moves except the TT move with a reduced window
+			singularBeta := ttScore - 2*depth
+			singularDepth := (depth - 1) / 2
+
+			score := e.negamax(singularDepth, singularBeta-1, singularBeta, ttMove)
+
+			if score < singularBeta {
+				extension = 1
+			}
+		}
+	}
+
+	// Static Null Move Pruning (Reverse Futility Pruning)
+	// If static evaluation is significantly above beta, we can prune the node.
+	if depth <= 5 && !inCheck {
+		staticEval := eval.Evaluate(e.Board)
+		margin := 120 * depth
+		if staticEval-margin >= beta {
+			return staticEval - margin
+		}
+	}
+
 	// Null Move Pruning (NMP)
 	// If the current side has major pieces and is not in check, try skipping a turn.
 	// If the resulting score is still >= beta, we assume the position is strong enough to fail-high.
 	if depth >= 3 && !inCheck && e.Board.HasMajorPieces(e.Board.SideToMove) {
 		e.Board.MakeNullMove()
-		score := -e.negamax(depth-3, -beta, -beta+1)
+		score := -e.negamax(depth-3, -beta, -beta+1, engine.NoMove)
 		e.Board.UnmakeNullMove()
 
 		if score >= beta {
@@ -280,7 +341,7 @@ func (e *Engine) negamax(depth, alpha, beta int) int {
 	// Internal Iterative Deepening (IID)
 	// If we don't have a best move from the TT, perform a shallow search to find one.
 	if depth >= 5 && ttMove == engine.NoMove {
-		e.negamax(depth-2, alpha, beta)
+		e.negamax(depth-2, alpha, beta, engine.NoMove)
 		_, ttMove, _ = e.TT.Probe(e.Board.Hash, depth, alpha, beta, e.Board.Ply)
 	}
 
@@ -296,11 +357,20 @@ func (e *Engine) negamax(depth, alpha, beta int) int {
 	for i := 0; i < ml.Count; i++ {
 		move := ml.Moves[i]
 
+		if move == excludedMove {
+			continue
+		}
+
 		// Futility Pruning: Skip quiet moves at low depth if they can't improve alpha
 		if depth <= 3 && !inCheck && i > 0 && move.Flags()&engine.CaptureFlag == 0 && move.Flags()&0x8000 == 0 {
 			if standingPat+depth*150 < alpha {
 				continue
 			}
+		}
+
+		// Late Move Pruning (LMP): Skip quiet moves if we've searched enough at low depth
+		if depth <= 4 && !inCheck && i >= (4+2*depth*depth) && move.Flags()&engine.CaptureFlag == 0 && move.Flags()&0x8000 == 0 {
+			continue
 		}
 
 		// Bad Capture Pruning: skip captures that lose material at low depths
@@ -317,7 +387,7 @@ func (e *Engine) negamax(depth, alpha, beta int) int {
 		var score int
 		if i == 0 {
 			// Principal Variation move, search with full window
-			score = -e.negamax(depth-1, -beta, -alpha)
+			score = -e.negamax(depth-1+extension, -beta, -alpha, engine.NoMove)
 		} else {
 			// Late Move Reductions (LMR)
 			reduction := 0
@@ -329,16 +399,16 @@ func (e *Engine) negamax(depth, alpha, beta int) int {
 			}
 
 			// Principal Variation Search (PVS) with null window
-			score = -e.negamax(depth-1-reduction, -(alpha + 1), -alpha)
+			score = -e.negamax(depth-1-reduction, -(alpha + 1), -alpha, engine.NoMove)
 
 			// Re-search if reduced move beats alpha
 			if score > alpha && reduction > 0 {
-				score = -e.negamax(depth-1, -(alpha + 1), -alpha)
+				score = -e.negamax(depth-1, -(alpha + 1), -alpha, engine.NoMove)
 			}
 
 			// Re-search with full window if null window search beats alpha
 			if score > alpha && score < beta {
-				score = -e.negamax(depth-1, -beta, -alpha)
+				score = -e.negamax(depth-1, -beta, -alpha, engine.NoMove)
 			}
 		}
 
@@ -357,13 +427,18 @@ func (e *Engine) negamax(depth, alpha, beta int) int {
 			if atomic.LoadInt32(e.Stopped) != 0 {
 				return 0
 			}
-			// Store killer moves and history heuristic for quiet moves
+			// Store killer moves, history heuristic, and countermoves for quiet moves
 			if move.Flags()&engine.CaptureFlag == 0 && e.Board.Ply < 64 {
 				if move != e.KillerMoves[e.Board.Ply][0] {
 					e.KillerMoves[e.Board.Ply][1] = e.KillerMoves[e.Board.Ply][0]
 					e.KillerMoves[e.Board.Ply][0] = move
 				}
 				e.HistoryTable[e.Board.SideToMove][move.From()][move.To()] += depth * depth
+
+				if e.Board.Ply > 0 {
+					prevMove := e.Board.History[e.Board.Ply-1].Move
+					e.CounterMoves[prevMove.From()][prevMove.To()] = move
+				}
 			}
 
 			break // Fail-high, beta cutoff
@@ -402,8 +477,11 @@ func (e *Engine) negamax(depth, alpha, beta int) int {
 // quiescence search evaluates only "noisy" positions (captures) to stabilize the evaluation.
 func (e *Engine) quiescence(alpha, beta int) int {
 	nodes := atomic.AddUint64(e.Nodes, 1)
-	if nodes&2047 == 0 && e.TimeLimit > 0 && time.Since(e.StartTime) >= e.TimeLimit {
-		atomic.StoreInt32(e.Stopped, 1)
+	if nodes&2047 == 0 {
+		if (e.TimeLimit > 0 && time.Since(e.StartTime) >= e.TimeLimit) ||
+			(e.NodesLimit > 0 && nodes >= e.NodesLimit) {
+			atomic.StoreInt32(e.Stopped, 1)
+		}
 	}
 
 	if atomic.LoadInt32(e.Stopped) != 0 {
@@ -600,6 +678,12 @@ var mvvLva = [7][7]int{
 func (e *Engine) orderMoves(ml *engine.MoveList, ttMove engine.Move) {
 	scores := make([]int, ml.Count)
 
+	counterMove := engine.NoMove
+	if e.Board.Ply > 0 {
+		prevMove := e.Board.History[e.Board.Ply-1].Move
+		counterMove = e.CounterMoves[prevMove.From()][prevMove.To()]
+	}
+
 	for i := 0; i < ml.Count; i++ {
 		move := ml.Moves[i]
 
@@ -632,6 +716,8 @@ func (e *Engine) orderMoves(ml *engine.MoveList, ttMove engine.Move) {
 			scores[i] = 10000
 		} else if e.Board.Ply < 64 && move == e.KillerMoves[e.Board.Ply][1] {
 			scores[i] = 9000
+		} else if move == counterMove {
+			scores[i] = 8500
 		} else {
 			scores[i] = e.HistoryTable[e.Board.SideToMove][move.From()][move.To()]
 		}

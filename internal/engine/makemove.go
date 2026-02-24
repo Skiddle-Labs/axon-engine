@@ -22,6 +22,7 @@ func (b *Board) MakeMove(m Move) bool {
 
 	// 1. Save current state to history
 	b.History[b.Ply] = State{
+		Move:          m,
 		EnPassant:     b.EnPassant,
 		Castling:      b.Castling,
 		HalfMoveClock: b.HalfMoveClock,
@@ -243,6 +244,7 @@ func (b *Board) UnmakeMove(m Move) {
 // MakeNullMove makes a null move (passing the turn).
 func (b *Board) MakeNullMove() {
 	b.History[b.Ply] = State{
+		Move:          NoMove,
 		EnPassant:     b.EnPassant,
 		Castling:      b.Castling,
 		HalfMoveClock: b.HalfMoveClock,

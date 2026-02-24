@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/personal-github/axon-engine/internal/engine"
+	"github.com/personal-github/axon-engine/internal/eval"
 	"github.com/personal-github/axon-engine/internal/search"
 )
 
@@ -24,6 +25,8 @@ type Protocol struct {
 	threads          int
 	multiPV          int
 	moveOverhead     int
+	slowMover        int
+	analyseMode      bool
 	isPondering      bool
 	pendingTimeLimit time.Duration
 }
@@ -37,6 +40,7 @@ func NewProtocol(input io.Reader, output io.Writer) *Protocol {
 		threads:      1,
 		multiPV:      1,
 		moveOverhead: 10,
+		slowMover:    100,
 	}
 }
 
@@ -70,6 +74,8 @@ func (p *Protocol) Start() {
 			p.handleSetOption(parts)
 		case "d":
 			p.handleDisplay()
+		case "eval":
+			p.handleEval()
 		case "quit":
 			return
 		default:
@@ -81,11 +87,15 @@ func (p *Protocol) Start() {
 func (p *Protocol) handleUCI() {
 	p.send("id name Axon Engine")
 	p.send("id author Axon Team")
-	p.send("option name Hash type spin default 64 min 1 max 1024")
+	p.send("option name Hash type spin default 64 min 1 max 65536")
 	p.send("option name Threads type spin default 1 min 1 max 128")
 	p.send("option name MultiPV type spin default 1 min 1 max 128")
 	p.send("option name Ponder type check default false")
 	p.send("option name Move Overhead type spin default 10 min 0 max 5000")
+	p.send("option name Slow Mover type spin default 100 min 10 max 1000")
+	p.send("option name Clear Hash type button")
+	p.send("option name UCI_AnalyseMode type check default false")
+	p.send("option name UCI_Opponent type string")
 	p.send("uciok")
 }
 
@@ -181,12 +191,41 @@ func (p *Protocol) handleGo(parts []string) {
 	p.isPondering = false
 	p.pendingTimeLimit = 0
 
-	depth := 64
+	ml := p.board.GenerateMoves()
+	legalCount := 0
+	var lastLegal engine.Move
+	for i := 0; i < ml.Count; i++ {
+		if p.board.MakeMove(ml.Moves[i]) {
+			p.board.UnmakeMove(ml.Moves[i])
+			legalCount++
+			lastLegal = ml.Moves[i]
+		}
+	}
+
+	// Optimization: Instant move if only one legal move is available and not pondering
+	isPonder := false
+	for _, part := range parts {
+		if part == "ponder" {
+			isPonder = true
+			break
+		}
+	}
+
+	if legalCount == 1 && !isPonder {
+		p.send(fmt.Sprintf("bestmove %s", lastLegal.String()))
+		return
+	}
+
+	p.send(fmt.Sprintf("info string searching with %d threads", p.threads))
+
+	depth := 128
 	var timeLimit time.Duration
 
-	wtime, btime := 0, 0
+	wtime, btime := -1, -1
 	winc, binc := 0, 0
 	movestogo := 30
+	movetime := -1
+	nodesLimit := uint64(0)
 
 	for i := 1; i < len(parts); i++ {
 		switch parts[i] {
@@ -224,29 +263,47 @@ func (p *Protocol) handleGo(parts []string) {
 				movestogo, _ = strconv.Atoi(parts[i+1])
 				i++
 			}
+		case "movetime":
+			if i+1 < len(parts) {
+				movetime, _ = strconv.Atoi(parts[i+1])
+				i++
+			}
+		case "nodes":
+			if i+1 < len(parts) {
+				if n, err := strconv.ParseUint(parts[i+1], 10, 64); err == nil {
+					nodesLimit = n
+				}
+				i++
+			}
 		case "infinite":
-			depth = 64
+			depth = 128
 		}
 	}
 
-	if p.board.SideToMove == engine.White && wtime > 0 {
+	if movetime > 0 {
+		timeLimit = time.Duration(movetime) * time.Millisecond
+	} else if p.board.SideToMove == engine.White && wtime >= 0 {
 		timeLimit = time.Duration(wtime/movestogo+winc) * time.Millisecond
-	} else if p.board.SideToMove == engine.Black && btime > 0 {
+	} else if p.board.SideToMove == engine.Black && btime >= 0 {
 		timeLimit = time.Duration(btime/movestogo+binc) * time.Millisecond
 	}
 
 	if timeLimit > 0 {
+		timeLimit = (timeLimit * time.Duration(p.slowMover)) / 100
 		timeLimit -= time.Duration(p.moveOverhead) * time.Millisecond
-		if timeLimit < 10*time.Millisecond {
-			timeLimit = 10 * time.Millisecond
+		if timeLimit < 1*time.Millisecond {
+			timeLimit = 1 * time.Millisecond
 		}
 
 		if !p.isPondering {
 			p.search.TimeLimit = timeLimit
+			p.search.SoftLimit = (timeLimit * 6) / 10
 		} else {
 			p.pendingTimeLimit = timeLimit
 		}
 	}
+
+	p.search.NodesLimit = nodesLimit
 
 	go func(e *search.Engine, d int) {
 		bestMove := e.Search(d)
@@ -370,11 +427,26 @@ func (p *Protocol) handleSetOption(parts []string) {
 		if v, err := strconv.Atoi(value); err == nil {
 			p.moveOverhead = v
 		}
+	} else if name == "slow mover" {
+		if v, err := strconv.Atoi(value); err == nil {
+			p.slowMover = v
+		}
+	} else if name == "clear hash" {
+		search.GlobalTT.Clear()
+	} else if name == "uci_analysemode" {
+		p.analyseMode = value == "true"
+	} else if name == "uci_opponent" {
+		// Standard UCI option
 	}
 }
 
 func (p *Protocol) handleDisplay() {
 	p.send(p.board.String())
+}
+
+func (p *Protocol) handleEval() {
+	score := eval.Evaluate(p.board)
+	p.send(fmt.Sprintf("evaluation %d cp", score))
 }
 
 func (p *Protocol) send(msg string) {

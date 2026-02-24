@@ -21,11 +21,15 @@ func TestProtocol_Handshake(t *testing.T) {
 	expectedIDs := []string{
 		"id name Axon Engine",
 		"id author Axon Team",
-		"option name Hash type spin default 64 min 1 max 1024",
+		"option name Hash type spin default 64 min 1 max 65536",
 		"option name Threads type spin default 1 min 1 max 128",
 		"option name MultiPV type spin default 1 min 1 max 128",
 		"option name Ponder type check default false",
 		"option name Move Overhead type spin default 10 min 0 max 5000",
+		"option name Slow Mover type spin default 100 min 10 max 1000",
+		"option name Clear Hash type button",
+		"option name UCI_AnalyseMode type check default false",
+		"option name UCI_Opponent type string",
 		"uciok",
 		"readyok",
 	}
