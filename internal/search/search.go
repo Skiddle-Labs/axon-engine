@@ -77,14 +77,19 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 	for i := 0; i < ml.Count; i++ {
 		if e.Board.MakeMove(ml.Moves[i]) {
 			e.Board.UnmakeMove(ml.Moves[i])
+			if legalCount == 0 {
+				globalBestMove = ml.Moves[i]
+			}
 			legalCount++
-			break
 		}
 	}
 
 	if legalCount == 0 {
 		return engine.NoMove
 	}
+
+	// Print initial info so fastchess doesn't complain if we stop early
+	e.printInfo(1, eval.Evaluate(e.Board), globalBestMove, 1)
 
 	// If SoftLimit is not explicitly set, use 60% of TimeLimit as a default.
 	if e.SoftLimit == 0 && e.TimeLimit > 0 {

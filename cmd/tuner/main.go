@@ -65,13 +65,17 @@ func main() {
 	}
 	fmt.Printf("Using %d threads.\n", *threads)
 
+	fmt.Print("Precomputing features... ")
+	precomputed := PrecomputeEntries(entries)
+	fmt.Println("Done.")
+
 	// Step 1: Find the optimal scaling constant K for the sigmoid function.
 	fmt.Print("Calculating optimal K... ")
-	bestK := FindBestK(entries)
+	bestK := FindBestK(precomputed)
 	fmt.Printf("Done. Best K: %.4f\n", bestK)
 
 	// Step 2: Run the optimization loop.
-	RunTuning(entries, bestK, *maxIters)
+	RunTuning(precomputed, bestK, *maxIters)
 }
 
 func LoadEntries(path string) ([]Entry, error) {
@@ -140,11 +144,11 @@ func LoadEntries(path string) ([]Entry, error) {
 }
 
 func Sigmoid(score, k float64) float64 {
-	return 1.0 / (1.0 + math.Pow(10, -k*score/400.0))
+	return 1.0 / (1.0 + math.Exp(-k*score/400.0*math.Ln10))
 }
 
 // CalculateMSEParallel computes the Mean Squared Error using multiple threads.
-func CalculateMSEParallel(entries []Entry, k float64) float64 {
+func CalculateMSEParallel(entries []PrecomputedEntry, k float64) float64 {
 	numThreads := *threads
 	if numThreads <= 0 {
 		numThreads = 1
@@ -170,9 +174,9 @@ func CalculateMSEParallel(entries []Entry, k float64) float64 {
 			localError := 0.0
 			for j := s; j < e; j++ {
 				entry := entries[j]
-				score := float64(eval.Evaluate(entry.board))
-				actualResult := entry.result
-				if entry.board.SideToMove == engine.Black {
+				score := float64(entry.Evaluate())
+				actualResult := entry.Result
+				if entry.SideToMove == engine.Black {
 					actualResult = 1.0 - actualResult
 				}
 				prediction := Sigmoid(score, k)
@@ -194,7 +198,7 @@ func CalculateMSEParallel(entries []Entry, k float64) float64 {
 	return math.Float64frombits(atomic.LoadUint64(&totalError)) / float64(len(entries))
 }
 
-func FindBestK(entries []Entry) float64 {
+func FindBestK(entries []PrecomputedEntry) float64 {
 	bestK := 0.0
 	minError := math.MaxFloat64
 
@@ -208,7 +212,7 @@ func FindBestK(entries []Entry) float64 {
 	return bestK
 }
 
-func RunTuning(entries []Entry, k float64, maxIterations int) {
+func RunTuning(entries []PrecomputedEntry, k float64, maxIterations int) {
 	params, names := getTunableParams()
 	bestMSE := CalculateMSEParallel(entries, k)
 
@@ -236,6 +240,7 @@ func RunTuning(entries []Entry, k float64, maxIterations int) {
 				bestMSE = newMSE
 				improved = true
 				fmt.Printf("  %s: %d -> %d (MSE: %.10f)\n", names[i], oldVal, *p, bestMSE)
+				saveParams(*saveFile, params, names)
 				continue
 			}
 
@@ -246,6 +251,7 @@ func RunTuning(entries []Entry, k float64, maxIterations int) {
 				bestMSE = newMSE
 				improved = true
 				fmt.Printf("  %s: %d -> %d (MSE: %.10f)\n", names[i], oldVal, *p, bestMSE)
+				saveParams(*saveFile, params, names)
 				continue
 			}
 

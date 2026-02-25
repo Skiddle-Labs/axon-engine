@@ -36,10 +36,13 @@ type Protocol struct {
 
 // NewProtocol creates a new Protocol handler.
 func NewProtocol(input io.Reader, output io.Writer) *Protocol {
+	b := engine.NewBoard()
+	b.SetFEN(startFEN)
+
 	return &Protocol{
 		reader:       bufio.NewScanner(input),
 		writer:       output,
-		board:        engine.NewBoard(),
+		board:        b,
 		threads:      1,
 		multiPV:      1,
 		moveOverhead: 10,
@@ -193,6 +196,7 @@ func (p *Protocol) handleGo(parts []string) {
 	// Probe opening book
 	if p.board.Ply <= p.bookDepth {
 		if move, ok := p.book.GetMove(p.board); ok {
+			p.send(fmt.Sprintf("info depth 1 score cp 0 nodes 0 pv %s", move.String()))
 			p.send(fmt.Sprintf("bestmove %s", move.String()))
 			return
 		}
@@ -229,6 +233,8 @@ func (p *Protocol) handleGo(parts []string) {
 	}
 
 	if legalCount == 1 && !isPonder {
+		score := eval.Evaluate(p.board)
+		p.send(fmt.Sprintf("info depth 1 score cp %d nodes 0 pv %s", score, lastLegal.String()))
 		p.send(fmt.Sprintf("bestmove %s", lastLegal.String()))
 		return
 	}
@@ -336,6 +342,8 @@ func (p *Protocol) handleGo(parts []string) {
 			ml := e.Board.GenerateMoves()
 			if ml.Count > 0 {
 				bestMove = ml.Moves[0]
+				score := eval.Evaluate(e.Board)
+				p.send(fmt.Sprintf("info depth 1 score cp %d nodes %d pv %s", score, atomic.LoadUint64(e.Nodes), bestMove.String()))
 			} else {
 				return
 			}

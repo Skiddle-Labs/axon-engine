@@ -1,5 +1,8 @@
 # Binaries
 *.exe
+*.txt
+*.bat
+*.pgn
 *.exe~
 *.dll
 *.so
