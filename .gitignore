@@ -36,3 +36,4 @@ vendor/
 
 # Training and test data
 *.epd
+*.bin
