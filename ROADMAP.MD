@@ -91,5 +91,19 @@ This document tracks the planned improvements and current progress of the Axon c
 - [ ] **Logging System**: Dedicated logging to file for debugging long matches and unexpected crashes.
 - [ ] **Tuner Auto-Pilot**: Scripts to automate the full pipeline: datagen -> FindBestK -> SPSA -> apply.
 
+## 11. Future Extensions
+- [ ] **Chess960 (FRC)**: Support for Fischer Random Chess movegen and castling rules (Planned for after standard chess maturity).
+- [ ] **UCI_ShowWDL**: Display Win/Draw/Loss probabilities in UCI output for better user feedback.
+
+## 12. Advanced UCI Protocol & Options
+- [ ] **Strength Limiting**: Implementation of `UCI_LimitStrength` and `UCI_Elo` for casual play.
+- [ ] **Pondering**: Full support for "search while pondering" (thinking on opponent's time).
+- [ ] **UCI_AnalyseMode**: Specialized search/eval adjustments when the engine is used for analysis.
+- [ ] **Heuristic Knobs**: Expose all internal parameters (LMR, Pruning margins, etc.) via `setoption`.
+
+## 13. Release & Versioning Strategy
+- [ ] **Combined Versioning**: Engine versioning will be based on `Engine Version + Network Version` (e.g., Axon 1.0 + Net v1) to track the tight coupling between search and evaluation.
+- [ ] **Automated Build Pipeline**: CI/CD to bundle specific engine releases with their corresponding validated NNUE files.
+
 ---
 *Last Updated: February 27, 2026*
