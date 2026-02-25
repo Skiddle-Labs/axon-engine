@@ -56,6 +56,7 @@ go build -o tuner.exe ./cmd/tuner
 - `-file`: Path to the training data file (EPD format).
 - `-iterations`: Number of iterations to run. Use `0` (default) to run until no further improvements are found.
 - `-threads`: Number of worker threads for MSE calculation (Default: Number of CPUs).
+- `-save`: Path to save the optimized parameters (Default: `tuned_params.txt`).
 
 ### How it Works (Texel Method)
 The tuner calculates a "Sigmoid" value of the engine's static evaluation for every position in your dataset. It then compares this to the actual game result (1.0 for Win, 0.5 for Draw, 0.0 for Loss) and adjusts the parameters to minimize the **Mean Squared Error (MSE)**.
@@ -71,7 +72,7 @@ This allows you to monitor which parameters are being adjusted and how much they
 
 ### Usage Example
 ```bash
-./tuner.exe -file data_725k.epd -threads 12
+./tuner.exe -file data_725k.epd -threads 12 -save my_tuned_eval.txt
 ```
 
 ---
@@ -81,8 +82,9 @@ This allows you to monitor which parameters are being adjusted and how much they
 Once the tuner finishes, you must manually apply the new values to your engine:
 
 1. Open `internal/eval/eval.go`.
-2. Locate the constants or arrays (like `MgPST`, `EgPST`, `PieceValues`, or `SafetyTable`).
-3. Replace the old values with the "Optimized" values from the tuner output.
+2. Open the saved results file (e.g., `tuned_params.txt`).
+3. Locate the constants or arrays (like `MgPST`, `EgPST`, `PieceValues`, or `SafetyTable`) in the source code.
+4. Replace the old values with the optimized values from the file.
 4. Re-build the engine and re-run `bench` or play matches to verify the Elo gain.
 
 ---

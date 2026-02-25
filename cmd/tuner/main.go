@@ -24,7 +24,8 @@ type Entry struct {
 var (
 	dataFile = flag.String("file", "", "Path to the training data file (EPD format)")
 	maxIters = flag.Int("iterations", 0, "Number of iterations (0 for until no improvement)")
-	threads  = flag.Int("threads", runtime.NumCPU(), "Number of threads to use for MSE calculation")
+	threads  = flag.Int("threads", 0, "Number of threads to use for MSE calculation (defaults to 80% of CPUs)")
+	saveFile = flag.String("save", "tuned_params.txt", "Path to save the optimized parameters")
 )
 
 func main() {
@@ -37,7 +38,7 @@ func main() {
 
 	if filePath == "" {
 		fmt.Println("Axon Tuner - Texel Method")
-		fmt.Println("Usage: tuner -file <datafile.epd> [-iterations <n>] [-threads <t>]")
+		fmt.Println("Usage: tuner -file <datafile.epd> [-iterations <n>] [-threads <t>] [-save <file>]")
 		flag.PrintDefaults()
 		return
 	}
@@ -54,6 +55,14 @@ func main() {
 	}
 
 	fmt.Printf("Loaded %d positions for tuning.\n", len(entries))
+
+	if *threads <= 0 {
+		t := int(float64(runtime.NumCPU()) * 0.8)
+		if t < 1 {
+			t = 1
+		}
+		*threads = t
+	}
 	fmt.Printf("Using %d threads.\n", *threads)
 
 	// Step 1: Find the optimal scaling constant K for the sigmoid function.
@@ -247,14 +256,31 @@ func RunTuning(entries []Entry, k float64, maxIterations int) {
 		if !improved {
 			fmt.Println("\nOptimization complete. No further improvements found.")
 			printParams(params, names)
+			saveParams(*saveFile, params, names)
 			break
 		}
 
 		if iteration%1 == 0 {
 			printParams(params, names)
+			saveParams(*saveFile, params, names)
 		}
 		iteration++
 	}
+}
+
+func saveParams(path string, params []*int, names []string) {
+	file, err := os.Create(path)
+	if err != nil {
+		fmt.Printf("Error creating save file: %v\n", err)
+		return
+	}
+	defer file.Close()
+
+	fmt.Fprintf(file, "// Axon Tuned Parameters - Saved automatically\n\n")
+	for i := 0; i < len(params); i++ {
+		fmt.Fprintf(file, "%s = %d\n", names[i], *params[i])
+	}
+	fmt.Printf("Parameters saved to %s\n", path)
 }
 
 func getTunableParams() ([]*int, []string) {
@@ -269,6 +295,38 @@ func getTunableParams() ([]*int, []string) {
 	params = append(params, &eval.QueenMG, &eval.QueenEG)
 	names = append(names, "QueenMG", "QueenEG")
 
+	// Pawn Structure
+	params = append(params, &eval.PawnDoubledMG, &eval.PawnDoubledEG)
+	names = append(names, "PawnDoubledMG", "PawnDoubledEG")
+	params = append(params, &eval.PawnIsolatedMG, &eval.PawnIsolatedEG)
+	names = append(names, "PawnIsolatedMG", "PawnIsolatedEG")
+	params = append(params, &eval.PawnSupportedMG, &eval.PawnSupportedEG)
+	names = append(names, "PawnSupportedMG", "PawnSupportedEG")
+	params = append(params, &eval.PawnPhalanxMG, &eval.PawnPhalanxEG)
+	names = append(names, "PawnPhalanxMG", "PawnPhalanxEG")
+	params = append(params, &eval.PawnBackwardMG, &eval.PawnBackwardEG)
+	names = append(names, "PawnBackwardMG", "PawnBackwardEG")
+	params = append(params, &eval.PawnPassedMG, &eval.PawnPassedEG)
+	names = append(names, "PawnPassedMG", "PawnPassedEG")
+
+	// Mobility
+	params = append(params, &eval.KnightMobilityMG, &eval.KnightMobilityEG)
+	names = append(names, "KnightMobilityMG", "KnightMobilityEG")
+	params = append(params, &eval.BishopMobilityMG, &eval.BishopMobilityEG)
+	names = append(names, "BishopMobilityMG", "BishopMobilityEG")
+	params = append(params, &eval.RookMobilityMG, &eval.RookMobilityEG)
+	names = append(names, "RookMobilityMG", "RookMobilityEG")
+	params = append(params, &eval.QueenMobilityMG, &eval.QueenMobilityEG)
+	names = append(names, "QueenMobilityMG", "QueenMobilityEG")
+
+	// Other
+	params = append(params, &eval.BishopPairMG, &eval.BishopPairEG)
+	names = append(names, "BishopPairMG", "BishopPairEG")
+	params = append(params, &eval.WeakAttackerMG, &eval.WeakAttackerEG)
+	names = append(names, "WeakAttackerMG", "WeakAttackerEG")
+	params = append(params, &eval.HangingDivisorMG, &eval.HangingDivisorEG)
+	names = append(names, "HangingDivisorMG", "HangingDivisorEG")
+
 	// PSTs
 	typeNames := []string{"None", "Pawn", "Knight", "Bishop", "Rook", "Queen", "King"}
 	for pt := engine.Pawn; pt <= engine.King; pt++ {
@@ -281,6 +339,9 @@ func getTunableParams() ([]*int, []string) {
 	}
 
 	// King Safety
+	params = append(params, &eval.KingShieldClose, &eval.KingShieldFar)
+	names = append(names, "KingShieldClose", "KingShieldFar")
+
 	for pt := engine.Knight; pt <= engine.Queen; pt++ {
 		params = append(params, &eval.KingAttackerWeight[pt])
 		names = append(names, fmt.Sprintf("KingAttackerWeight[%s]", typeNames[pt]))
@@ -295,7 +356,8 @@ func getTunableParams() ([]*int, []string) {
 
 func printParams(params []*int, names []string) {
 	fmt.Println("\n--- Current Material & Key Parameters ---")
-	for i := 0; i < 10; i++ {
+	// Print the first few interesting parameters (Material, Pawn Structure, etc.)
+	for i := 0; i < 35 && i < len(params); i++ {
 		fmt.Printf("%s: %d\n", names[i], *params[i])
 	}
 	fmt.Println("-----------------------------------------")

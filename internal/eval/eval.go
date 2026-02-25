@@ -5,7 +5,6 @@ import (
 )
 
 // Material values for Midgame (MG) and Endgame (EG)
-// These values are exported to allow for automated tuning.
 var (
 	PawnMG, PawnEG     = 82, 94
 	KnightMG, KnightEG = 337, 281
@@ -14,7 +13,32 @@ var (
 	QueenMG, QueenEG   = 1025, 936
 )
 
-// King Safety Tables
+// Pawn Structure Weights
+var (
+	PawnDoubledMG, PawnDoubledEG     = -10, -10
+	PawnIsolatedMG, PawnIsolatedEG   = -20, -20
+	PawnSupportedMG, PawnSupportedEG = 15, 20
+	PawnPhalanxMG, PawnPhalanxEG     = 10, 12
+	PawnBackwardMG, PawnBackwardEG   = -15, -20
+	PawnPassedMG, PawnPassedEG       = 2, 5 // Multipliers for rank*rank
+)
+
+// Mobility Weights
+var (
+	KnightMobilityMG, KnightMobilityEG = 2, 2
+	BishopMobilityMG, BishopMobilityEG = 3, 3
+	RookMobilityMG, RookMobilityEG     = 2, 2
+	QueenMobilityMG, QueenMobilityEG   = 1, 1
+)
+
+// Other Positional Weights
+var (
+	BishopPairMG, BishopPairEG         = 30, 50
+	WeakAttackerMG, WeakAttackerEG     = -25, -40
+	HangingDivisorMG, HangingDivisorEG = 4, 2 // Penalty = PieceValue / Divisor
+)
+
+// King Safety Tables and Weights
 var KingAttackerWeight = [7]int{
 	0, // None
 	0, // Pawn
@@ -24,6 +48,11 @@ var KingAttackerWeight = [7]int{
 	5, // Queen
 	0, // King
 }
+
+var (
+	KingShieldClose = 10
+	KingShieldFar   = 5
+)
 
 var SafetyTable = [100]int{
 	0, 0, 1, 2, 3, 5, 7, 9, 12, 15,
@@ -39,30 +68,25 @@ var SafetyTable = [100]int{
 }
 
 // Phase values for interpolation
-// These determine how much each piece contributes to the "midgame-ness" of a position.
 var (
 	KnightPhase = 1
 	BishopPhase = 1
 	RookPhase   = 2
 	QueenPhase  = 4
-	TotalPhase  = 24 // 4*Knight + 4*Bishop + 4*Rook + 2*Queen
+	TotalPhase  = 24
 )
 
 // Piece-Square Tables (PST)
-// Orientation: The tables are stored from Rank 8 (top) to Rank 1 (bottom).
-// This allows for a visual representation that matches a physical chess board.
-
-// MgPST handles the positional bonuses in the Midgame.
 var MgPST = [7][64]int{
 	engine.Pawn: {
-		0, 0, 0, 0, 0, 0, 0, 0, // Rank 8
-		50, 50, 50, 50, 50, 50, 50, 50, // Rank 7
-		10, 10, 20, 30, 30, 20, 10, 10, // Rank 6
-		5, 5, 10, 25, 25, 10, 5, 5, // Rank 5
-		0, 0, 0, 20, 20, 0, 0, 0, // Rank 4
-		5, -5, -10, 0, 0, -10, -5, 5, // Rank 3
-		5, 10, 10, -20, -20, 10, 10, 5, // Rank 2
-		0, 0, 0, 0, 0, 0, 0, 0, // Rank 1
+		0, 0, 0, 0, 0, 0, 0, 0,
+		50, 50, 50, 50, 50, 50, 50, 50,
+		10, 10, 20, 30, 30, 20, 10, 10,
+		5, 5, 10, 25, 25, 10, 5, 5,
+		0, 0, 0, 20, 20, 0, 0, 0,
+		5, -5, -10, 0, 0, -10, -5, 5,
+		5, 10, 10, -20, -20, 10, 10, 5,
+		0, 0, 0, 0, 0, 0, 0, 0,
 	},
 	engine.Knight: {
 		-50, -40, -30, -30, -30, -30, -40, -50,
@@ -116,7 +140,6 @@ var MgPST = [7][64]int{
 	},
 }
 
-// EgPST handles the positional bonuses in the Endgame.
 var EgPST = [7][64]int{
 	engine.Pawn: {
 		0, 0, 0, 0, 0, 0, 0, 0,
@@ -180,20 +203,14 @@ var EgPST = [7][64]int{
 	},
 }
 
-// Evaluate returns a score for the current board position using tapered evaluation.
 func Evaluate(b *engine.Board) int {
-	// 1. Determine the game phase based on non-pawn material.
 	mgW, egW, _ := calculatePhase(b)
-
-	// 2. Calculate separate scores for midgame and endgame for both sides.
 	mgWhite, egWhite := evaluateColor(b, engine.White)
 	mgBlack, egBlack := evaluateColor(b, engine.Black)
 
 	mgScore := mgWhite - mgBlack
 	egScore := egWhite - egBlack
 
-	// 3. Interpolate between the two based on the phase weight.
-	// As pieces are captured, egW increases and mgW decreases.
 	score := (mgScore*mgW + egScore*egW) / TotalPhase
 
 	if b.SideToMove == engine.Black {
@@ -202,12 +219,8 @@ func Evaluate(b *engine.Board) int {
 	return score
 }
 
-// calculatePhase determines how "close" we are to the endgame.
-// It uses material weights to assign a phase value from 0 (Opening/Midgame) to TotalPhase (Endgame).
 func calculatePhase(b *engine.Board) (int, int, int) {
-	// Start with full phase (Endgame) and subtract based on pieces present.
 	phase := TotalPhase
-
 	phase -= (b.Pieces[engine.White][engine.Knight].Count() + b.Pieces[engine.Black][engine.Knight].Count()) * KnightPhase
 	phase -= (b.Pieces[engine.White][engine.Bishop].Count() + b.Pieces[engine.Black][engine.Bishop].Count()) * BishopPhase
 	phase -= (b.Pieces[engine.White][engine.Rook].Count() + b.Pieces[engine.Black][engine.Rook].Count()) * RookPhase
@@ -217,8 +230,6 @@ func calculatePhase(b *engine.Board) (int, int, int) {
 		phase = 0
 	}
 
-	// egW (Endgame Weight) is higher when fewer pieces are on the board.
-	// mgW (Midgame Weight) is higher when more pieces are on the board.
 	egW := phase
 	mgW := TotalPhase - phase
 
@@ -245,8 +256,8 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 
 		// Doubled pawns
 		if (pawns & (engine.FileA << file)).Count() > 1 {
-			mg -= 10
-			eg -= 10
+			mg += PawnDoubledMG
+			eg += PawnDoubledEG
 		}
 
 		// Isolated pawns
@@ -258,11 +269,11 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 			isIsolated = false
 		}
 		if isIsolated {
-			mg -= 20
-			eg -= 20
+			mg += PawnIsolatedMG
+			eg += PawnIsolatedEG
 		}
 
-		// Connected pawns (protected by another pawn)
+		// Connected pawns
 		supported := false
 		if c == engine.White {
 			if rank > 0 {
@@ -284,7 +295,7 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 			}
 		}
 
-		// Phalanx pawns (side-by-side)
+		// Phalanx pawns
 		phalanx := false
 		if file > 0 && pawns.Test(engine.NewSquare(file-1, rank)) {
 			phalanx = true
@@ -294,17 +305,16 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 		}
 
 		if supported {
-			mg += 15
-			eg += 20
+			mg += PawnSupportedMG
+			eg += PawnSupportedEG
 		} else if phalanx {
-			mg += 10
-			eg += 12
+			mg += PawnPhalanxMG
+			eg += PawnPhalanxEG
 		}
 
 		// Backward pawn detection
 		isBackward := false
 		if !supported && !phalanx {
-			// Check if any friendly pawns are on adjacent files at this rank or behind
 			hasAdjacentBehind := false
 			if c == engine.White {
 				for r := 0; r <= rank; r++ {
@@ -314,7 +324,6 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 						break
 					}
 				}
-				// If no neighbors behind, check if the square in front is attacked by enemy pawn
 				if !hasAdjacentBehind && rank < 7 {
 					if (file > 0 && enemyPawns.Test(engine.NewSquare(file-1, rank+1))) ||
 						(file < 7 && enemyPawns.Test(engine.NewSquare(file+1, rank+1))) {
@@ -339,8 +348,8 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 		}
 
 		if isBackward {
-			mg -= 15
-			eg -= 20
+			mg += PawnBackwardMG
+			eg += PawnBackwardEG
 		}
 
 		// Passed pawns
@@ -373,8 +382,8 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 			} else {
 				bonus = (7 - rank) * (7 - rank)
 			}
-			mg += bonus * 2
-			eg += bonus * 5
+			mg += bonus * PawnPassedMG
+			eg += bonus * PawnPassedEG
 		}
 	}
 
@@ -387,8 +396,8 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 		mg += getPST(engine.Knight, sq, c, true)
 		eg += getPST(engine.Knight, sq, c, false)
 		mobility := engine.KnightAttacks[sq].Count()
-		mg += mobility * 2
-		eg += mobility * 2
+		mg += mobility * KnightMobilityMG
+		eg += mobility * KnightMobilityEG
 	}
 
 	// Bishops
@@ -396,16 +405,16 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 	mg += bishops.Count() * BishopMG
 	eg += bishops.Count() * BishopEG
 	if bishops.Count() >= 2 {
-		mg += 30
-		eg += 50
+		mg += BishopPairMG
+		eg += BishopPairEG
 	}
 	for bishops != 0 {
 		sq := bishops.PopLSB()
 		mg += getPST(engine.Bishop, sq, c, true)
 		eg += getPST(engine.Bishop, sq, c, false)
 		mobility := engine.GetBishopAttacks(sq, occ).Count()
-		mg += mobility * 3
-		eg += mobility * 3
+		mg += mobility * BishopMobilityMG
+		eg += mobility * BishopMobilityEG
 	}
 
 	// Rooks
@@ -417,8 +426,8 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 		mg += getPST(engine.Rook, sq, c, true)
 		eg += getPST(engine.Rook, sq, c, false)
 		mobility := engine.GetRookAttacks(sq, occ).Count()
-		mg += mobility * 2
-		eg += mobility * 2
+		mg += mobility * RookMobilityMG
+		eg += mobility * RookMobilityEG
 	}
 
 	// Queens
@@ -430,8 +439,8 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 		mg += getPST(engine.Queen, sq, c, true)
 		eg += getPST(engine.Queen, sq, c, false)
 		mobility := engine.GetQueenAttacks(sq, occ).Count()
-		mg += mobility * 1
-		eg += mobility * 1
+		mg += mobility * QueenMobilityMG
+		eg += mobility * QueenMobilityEG
 	}
 
 	// King
@@ -440,12 +449,10 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 		sq := kingBB.LSB()
 		mg += getPST(engine.King, sq, c, true)
 		eg += getPST(engine.King, sq, c, false)
-
-		// King Safety (Pawn Shield) - only in Midgame
 		mg += evaluateKingSafety(b, c, sq)
 	}
 
-	// Threats Evaluation
+	// Threats
 	them := c ^ 1
 	enemyOcc := b.Colors[them]
 	usOcc := b.Colors[c]
@@ -454,20 +461,15 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 		subset := b.Pieces[c][pt]
 		for subset != 0 {
 			sq := subset.PopLSB()
-
-			// Get all pieces attacking this square
 			attackers := b.AllAttackers(sq, occ)
 			enemyAttackers := attackers & enemyOcc
 
 			if !enemyAttackers.IsEmpty() {
 				defenders := attackers & usOcc
-
 				if defenders.IsEmpty() {
-					// Hanging piece penalty: Scale by piece value
-					mg -= engine.PieceValues[pt] / 4
-					eg -= engine.PieceValues[pt] / 2
+					mg -= engine.PieceValues[pt] / HangingDivisorMG
+					eg -= engine.PieceValues[pt] / HangingDivisorEG
 				} else {
-					// Defended piece, but check for attacks by lesser pieces
 					weakestEnemyAttacker := engine.None
 					for ept := engine.Pawn; ept < pt; ept++ {
 						if !(enemyAttackers & b.Pieces[them][ept]).IsEmpty() {
@@ -475,11 +477,9 @@ func evaluateColor(b *engine.Board, c engine.Color) (int, int) {
 							break
 						}
 					}
-
 					if weakestEnemyAttacker != engine.None {
-						// Attacked by lesser piece (e.g. Knight attacked by Pawn)
-						mg -= 25
-						eg -= 40
+						mg += WeakAttackerMG
+						eg += WeakAttackerEG
 					}
 				}
 			}
@@ -501,9 +501,9 @@ func evaluateKingSafety(b *engine.Board, c engine.Color, kingSq engine.Square) i
 			for f := file - 1; f <= file+1; f++ {
 				if f >= 0 && f <= 7 {
 					if pawns.Test(engine.NewSquare(f, rank+1)) {
-						score += 10
+						score += KingShieldClose
 					} else if rank < 6 && pawns.Test(engine.NewSquare(f, rank+2)) {
-						score += 5
+						score += KingShieldFar
 					}
 				}
 			}
@@ -513,9 +513,9 @@ func evaluateKingSafety(b *engine.Board, c engine.Color, kingSq engine.Square) i
 			for f := file - 1; f <= file+1; f++ {
 				if f >= 0 && f <= 7 {
 					if pawns.Test(engine.NewSquare(f, rank-1)) {
-						score += 10
+						score += KingShieldClose
 					} else if rank > 1 && pawns.Test(engine.NewSquare(f, rank-2)) {
-						score += 5
+						score += KingShieldFar
 					}
 				}
 			}
@@ -526,47 +526,27 @@ func evaluateKingSafety(b *engine.Board, c engine.Color, kingSq engine.Square) i
 	them := c ^ 1
 	occ := b.Occupancy()
 	zone := engine.KingAttacks[kingSq] | (engine.Bitboard(1) << kingSq)
+	attackerCount, attackerWeight := 0, 0
 
-	attackerCount := 0
-	attackerWeight := 0
-
-	// Check Knights
-	knights := b.Pieces[them][engine.Knight]
-	for knights != 0 {
-		sq := knights.PopLSB()
-		if !(engine.KnightAttacks[sq] & zone).IsEmpty() {
-			attackerCount++
-			attackerWeight += KingAttackerWeight[engine.Knight]
-		}
-	}
-
-	// Check Bishops
-	bishops := b.Pieces[them][engine.Bishop]
-	for bishops != 0 {
-		sq := bishops.PopLSB()
-		if !(engine.GetBishopAttacks(sq, occ) & zone).IsEmpty() {
-			attackerCount++
-			attackerWeight += KingAttackerWeight[engine.Bishop]
-		}
-	}
-
-	// Check Rooks
-	rooks := b.Pieces[them][engine.Rook]
-	for rooks != 0 {
-		sq := rooks.PopLSB()
-		if !(engine.GetRookAttacks(sq, occ) & zone).IsEmpty() {
-			attackerCount++
-			attackerWeight += KingAttackerWeight[engine.Rook]
-		}
-	}
-
-	// Check Queens
-	queens := b.Pieces[them][engine.Queen]
-	for queens != 0 {
-		sq := queens.PopLSB()
-		if !(engine.GetQueenAttacks(sq, occ) & zone).IsEmpty() {
-			attackerCount++
-			attackerWeight += KingAttackerWeight[engine.Queen]
+	for pt := engine.Knight; pt <= engine.Queen; pt++ {
+		pieces := b.Pieces[them][pt]
+		for pieces != 0 {
+			sq := pieces.PopLSB()
+			var attacks engine.Bitboard
+			switch pt {
+			case engine.Knight:
+				attacks = engine.KnightAttacks[sq]
+			case engine.Bishop:
+				attacks = engine.GetBishopAttacks(sq, occ)
+			case engine.Rook:
+				attacks = engine.GetRookAttacks(sq, occ)
+			case engine.Queen:
+				attacks = engine.GetQueenAttacks(sq, occ)
+			}
+			if !(attacks & zone).IsEmpty() {
+				attackerCount++
+				attackerWeight += KingAttackerWeight[pt]
+			}
 		}
 	}
 
@@ -581,11 +561,9 @@ func evaluateKingSafety(b *engine.Board, c engine.Color, kingSq engine.Square) i
 	return score
 }
 
-// getPST maps a square to its value in the Piece-Square Table.
 func getPST(pt engine.PieceType, sq engine.Square, c engine.Color, midgame bool) int {
 	rank := int(sq) / 8
 	file := int(sq) % 8
-
 	index := 0
 	if c == engine.White {
 		index = (7-rank)*8 + file

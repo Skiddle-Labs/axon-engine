@@ -30,7 +30,7 @@ Axon is a high-performance, tournament-grade chess engine written in Go (Golang)
 - **Tapered Evaluation**: Dynamically interpolates between Midgame and Endgame scores.
 - **Refined King Safety**: Uses an attacking zone model and non-linear safety tables to detect threats.
 - **Advanced Pawn Evaluation**: Includes logic for Phalanx pawns, Backward pawns, and supported structures.
-- **Texel Tuning**: The evaluation is prepared for automated tuning using the included `tuner` tool.
+- **Texel Tuning**: Automated evaluation tuning using a custom multi-threaded Texel Tuner.
 
 ## Getting Started
 
@@ -67,6 +67,25 @@ Axon can be configured using the `setoption name <Name> value <Value>` command.
 - **Move Overhead**: Time buffer in ms to account for network/GUI lag (Default: 10).
 - **Slow Mover**: Percentage multiplier for time management (Default: 100).
 - **Clear Hash**: Manually wipe the Transposition Table.
+
+## Development Tools
+
+Axon includes a suite of tools for engine development and evaluation tuning.
+
+### Datagen (`cmd/datagen`)
+Used to generate high-quality training data for the tuner through self-play.
+- Supports multi-threaded game generation.
+- Supports Polyglot opening books for position variety.
+- Outputs data in EPD format with game results.
+
+### Tuner (`cmd/tuner`)
+A high-performance, multi-threaded Texel tuner used to optimize evaluation parameters.
+- Uses Mean Squared Error (MSE) minimization.
+- Automatically uses 80% of available CPU cores by default for background operation.
+- Provides real-time feedback during the optimization process.
+- Designed to handle millions of positions efficiently.
+
+For detailed instructions, see the [Tuning Guide](TUNING_GUIDE.md).
 
 ## Project Structure
 - `/internal/engine`: Bitboards, Move Generation, Book Probing, and Zobrist Hashing.
