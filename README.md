@@ -36,7 +36,7 @@ Axon is a high-performance, tournament-grade chess engine written in Go (Golang)
 
 ### Installation
 ```bash
-git clone https://github.com/personal-github/axon-engine.git
+git clone https://github.com/Skiddle-Labs/axon-engine.git
 cd axon-engine
 go build -o axon main.go
 ```

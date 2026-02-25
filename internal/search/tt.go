@@ -4,7 +4,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/personal-github/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/engine"
 )
 
 const (

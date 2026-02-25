@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/personal-github/axon-engine/internal/engine"
-	"github.com/personal-github/axon-engine/internal/eval"
+	"github.com/Skiddle-Labs/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/eval"
 )
 
 const (

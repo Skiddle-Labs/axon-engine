@@ -1,7 +1,7 @@
 package eval
 
 import (
-	"github.com/personal-github/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/engine"
 )
 
 // Material values for Midgame (MG) and Endgame (EG)

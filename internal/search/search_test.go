@@ -3,7 +3,7 @@ package search
 import (
 	"testing"
 
-	"github.com/personal-github/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/engine"
 )
 
 // TestSearch_MateIn1 verifies that the engine finds a simple mate in one.

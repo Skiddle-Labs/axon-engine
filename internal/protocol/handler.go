@@ -9,9 +9,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/personal-github/axon-engine/internal/engine"
-	"github.com/personal-github/axon-engine/internal/eval"
-	"github.com/personal-github/axon-engine/internal/search"
+	"github.com/Skiddle-Labs/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/eval"
+	"github.com/Skiddle-Labs/axon-engine/internal/search"
 )
 
 const startFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"

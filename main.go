@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/personal-github/axon-engine/internal/protocol"
+	"github.com/Skiddle-Labs/axon-engine/internal/protocol"
 )
 
 func main() {

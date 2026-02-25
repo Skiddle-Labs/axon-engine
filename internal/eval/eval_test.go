@@ -3,7 +3,7 @@ package eval
 import (
 	"testing"
 
-	"github.com/personal-github/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/engine"
 )
 
 // TestEvaluate_StartingPosition verifies that the starting position is evaluated as 0 (balanced).

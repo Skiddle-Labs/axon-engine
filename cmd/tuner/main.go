@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/personal-github/axon-engine/internal/engine"
-	"github.com/personal-github/axon-engine/internal/eval"
+	"github.com/Skiddle-Labs/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/eval"
 )
 
 // Entry represents a single position and its game result.
@@ -25,7 +25,7 @@ func main() {
 		return
 	}
 
-	entries, err := loadEntries(os.Args[1])
+	entries, err := LoadEntries(os.Args[1])
 	if err != nil {
 		fmt.Printf("Error loading entries: %v\n", err)
 		return
@@ -41,14 +41,14 @@ func main() {
 	// Step 1: Find the optimal scaling constant K for the sigmoid function.
 	// This constant maps centipawn scores to expected game results.
 	fmt.Print("Calculating optimal K... ")
-	bestK := findBestK(entries)
+	bestK := FindBestK(entries)
 	fmt.Printf("Done. Best K: %.4f\n", bestK)
 
 	// Step 2: Run the optimization loop.
-	runTuning(entries, bestK)
+	RunTuning(entries, bestK)
 }
 
-func loadEntries(path string) ([]Entry, error) {
+func LoadEntries(path string) ([]Entry, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -95,13 +95,13 @@ func loadEntries(path string) ([]Entry, error) {
 	return entries, scanner.Err()
 }
 
-// sigmoid maps an evaluation score to a predicted game result (0.0 to 1.0).
-func sigmoid(score, k float64) float64 {
+// Sigmoid maps an evaluation score to a predicted game result (0.0 to 1.0).
+func Sigmoid(score, k float64) float64 {
 	return 1.0 / (1.0 + math.Pow(10, -k*score/400.0))
 }
 
-// calculateMSE computes the Mean Squared Error between static evaluations and game results.
-func calculateMSE(entries []Entry, k float64) float64 {
+// CalculateMSE computes the Mean Squared Error between static evaluations and game results.
+func CalculateMSE(entries []Entry, k float64) float64 {
 	errorSum := 0.0
 	for _, e := range entries {
 		// Static evaluation from the perspective of the side to move.
@@ -113,19 +113,19 @@ func calculateMSE(entries []Entry, k float64) float64 {
 			actualResult = 1.0 - actualResult
 		}
 
-		prediction := sigmoid(score, k)
+		prediction := Sigmoid(score, k)
 		errorSum += math.Pow(actualResult-prediction, 2)
 	}
 	return errorSum / float64(len(entries))
 }
 
-func findBestK(entries []Entry) float64 {
+func FindBestK(entries []Entry) float64 {
 	bestK := 0.0
 	minError := math.MaxFloat64
 
 	// Search for K that minimizes MSE
 	for k := 0.1; k <= 2.0; k += 0.01 {
-		err := calculateMSE(entries, k)
+		err := CalculateMSE(entries, k)
 		if err < minError {
 			minError = err
 			bestK = k
@@ -134,9 +134,9 @@ func findBestK(entries []Entry) float64 {
 	return bestK
 }
 
-func runTuning(entries []Entry, k float64) {
+func RunTuning(entries []Entry, k float64) {
 	params, names := getTunableParams()
-	bestMSE := calculateMSE(entries, k)
+	bestMSE := CalculateMSE(entries, k)
 
 	fmt.Printf("Initial MSE: %.10f\n", bestMSE)
 	fmt.Println("Starting Local Search optimization...")
@@ -151,7 +151,7 @@ func runTuning(entries []Entry, k float64) {
 
 			// Try increasing
 			*p = oldVal + 1
-			newMSE := calculateMSE(entries, k)
+			newMSE := CalculateMSE(entries, k)
 			if newMSE < bestMSE {
 				bestMSE = newMSE
 				improved = true
@@ -160,7 +160,7 @@ func runTuning(entries []Entry, k float64) {
 
 			// Try decreasing
 			*p = oldVal - 1
-			newMSE = calculateMSE(entries, k)
+			newMSE = CalculateMSE(entries, k)
 			if newMSE < bestMSE {
 				bestMSE = newMSE
 				improved = true

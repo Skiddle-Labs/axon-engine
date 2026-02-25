@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/personal-github/axon-engine/internal/search"
+	"github.com/Skiddle-Labs/axon-engine/internal/search"
 )
 
 // TestProtocol_Handshake tests the basic UCI initialization sequence.

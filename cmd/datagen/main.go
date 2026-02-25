@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/personal-github/axon-engine/internal/engine"
-	"github.com/personal-github/axon-engine/internal/search"
+	"github.com/Skiddle-Labs/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/search"
 )
 
 var (
@@ -30,6 +30,15 @@ const (
 	ResultDraw GameResult = 0
 	ResultLoss GameResult = -1
 )
+
+type Config struct {
+	NumGames    int
+	NumThreads  int
+	SearchDepth int
+	RandomMoves int
+	BookFile    string
+	OutputFile  string
+}
 
 func main() {
 	flag.Parse()
@@ -70,9 +79,9 @@ func main() {
 		go func(threadID int) {
 			defer wg.Done()
 			for atomic.AddInt32(&gamesRemaining, -1) >= 0 {
-				positions, result := playSingleGame(book)
+				positions, result := PlaySingleGame(book, *searchDepth, *randomMoves)
 				if len(positions) > 0 {
-					saveGame(file, positions, result)
+					SaveGame(file, positions, result)
 					atomic.AddUint64(&totalPositions, uint64(len(positions)))
 				}
 
@@ -91,12 +100,12 @@ func main() {
 	fmt.Printf("\nFinished! Generated %d positions in %.2f seconds (%.0f pos/sec)\n", posCount, duration, float64(posCount)/duration)
 }
 
-func playSingleGame(book *engine.PolyglotBook) ([]string, GameResult) {
+func PlaySingleGame(book *engine.PolyglotBook, searchDepth int, randomMoves int) ([]string, GameResult) {
 	board := engine.NewBoard()
 	board.SetFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
 
 	// 1. Play moves from book or random moves to start
-	for i := 0; i < *randomMoves; i++ {
+	for i := 0; i < randomMoves; i++ {
 		if book != nil {
 			if move, ok := book.GetMove(board); ok {
 				board.MakeMove(move)
@@ -164,16 +173,16 @@ func playSingleGame(book *engine.PolyglotBook) ([]string, GameResult) {
 
 		// Record position (only if not in check and not too early/late for diversity)
 		// Positions reached via book are not recorded.
-		if board.Ply > *randomMoves {
+		if board.Ply > randomMoves {
 			// We store the FEN from the perspective of the result.
 			// Tuner expects: FEN [1.0/0.5/0.0] where result is for the side in the FEN.
-			fen := getFENWithoutCounters(board)
+			fen := GetFENWithoutCounters(board)
 			positions = append(positions, fen)
 		}
 
 		// Search for move
 		eng := search.NewEngine(board)
-		move := eng.Search(*searchDepth)
+		move := eng.Search(searchDepth)
 
 		if move == engine.NoMove {
 			// Fallback to first legal move
@@ -194,7 +203,7 @@ func playSingleGame(book *engine.PolyglotBook) ([]string, GameResult) {
 	return positions, ResultDraw
 }
 
-func getFENWithoutCounters(b *engine.Board) string {
+func GetFENWithoutCounters(b *engine.Board) string {
 	// We want a clean FEN for the tuner.
 	// The tuner usually cares about the side to move and the pieces.
 	// Standard EPD format is common.
@@ -213,7 +222,7 @@ func getFENWithoutCounters(b *engine.Board) string {
 					pieces.WriteString(fmt.Sprintf("%d", empty))
 					empty = 0
 				}
-				pieces.WriteString(getPieceChar(p))
+				pieces.WriteString(GetPieceChar(p))
 			}
 		}
 		if empty > 0 {
@@ -261,14 +270,14 @@ func getFENWithoutCounters(b *engine.Board) string {
 	return strings.Join(fields, " ")
 }
 
-func getPieceChar(p engine.Piece) string {
+func GetPieceChar(p engine.Piece) string {
 	chars := ".PNBRQKpnbrqk"
 	return string(chars[int(p)])
 }
 
 var fileMutex sync.Mutex
 
-func saveGame(file *os.File, positions []string, result GameResult) {
+func SaveGame(file *os.File, positions []string, result GameResult) {
 	fileMutex.Lock()
 	defer fileMutex.Unlock()
 
