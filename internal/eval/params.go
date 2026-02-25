@@ -34,17 +34,19 @@ var (
 	PawnPassedEG    = 5
 )
 
-// Mobility Weights
-var (
-	KnightMobilityMG = 5
-	KnightMobilityEG = 7
-	BishopMobilityMG = 7
-	BishopMobilityEG = 6
-	RookMobilityMG   = 6
-	RookMobilityEG   = 9
-	QueenMobilityMG  = 2
-	QueenMobilityEG  = 13
-)
+// Mobility Weights (Non-linear tables)
+var KnightMobilityMG = [9]int{-15, -5, 0, 5, 10, 15, 20, 25, 30}
+var KnightMobilityEG = [9]int{-20, -10, 0, 7, 14, 21, 28, 35, 42}
+var BishopMobilityMG = [14]int{-20, -10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50}
+var BishopMobilityEG = [14]int{-25, -15, -5, 0, 6, 12, 18, 24, 30, 36, 42, 48, 54, 60}
+var RookMobilityMG = [15]int{-15, -10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}
+var RookMobilityEG = [15]int{-20, -10, 0, 9, 18, 27, 36, 45, 54, 63, 72, 81, 90, 99, 108}
+var QueenMobilityMG = [28]int{
+	-20, -15, -10, -5, 0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46,
+}
+var QueenMobilityEG = [28]int{
+	-40, -30, -20, -10, 0, 13, 26, 39, 52, 65, 78, 91, 104, 117, 130, 143, 156, 169, 182, 195, 208, 221, 234, 247, 260, 273, 286, 299,
+}
 
 // Other Positional Weights
 var (
@@ -76,10 +78,13 @@ var KingAttackerWeight = [7]int{
 }
 
 var (
-	KingShieldClose = 18
-	KingShieldFar   = 10
-	PawnStormMG     = -15
-	PawnStormEG     = -5
+	KingShieldClose   = 18
+	KingShieldFar     = 10
+	KingShieldMissing = -25
+	VirtualMobilityMG = 2
+	VirtualMobilityEG = 1
+	PawnStormMG       = -15
+	PawnStormEG       = -5
 )
 
 var SafetyTable = [100]int{

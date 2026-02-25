@@ -10,7 +10,7 @@ Axon is a high-performance, tournament-grade chess engine written in Go (Golang)
 - **Precomputed Attacks**: Fast lookup tables for leapers (Kings, Knights) and Ray-casting (Magic Bitboards) for sliding pieces.
 - **SEE (Static Exchange Evaluation)**: Accurately calculates the material balance of capture sequences to prune losing captures.
 - **Pawn Hash Table**: High-speed specialized cache for pawn structure evaluations, significantly boosting search speed (NPS).
-- **NNUE Accumulators**: Incremental first-layer hidden layer updates (HalfKP features) integrated into the move-handling core for future neural network inference.
+- **NNUE Accumulators**: Incremental first-layer hidden layer updates (HalfKP features) integrated into the move-handling core. Optimized with **AVX2 SIMD** kernels for maximum throughput.
 
 ### Search Algorithms
 - **Modular Search Architecture**: Decoupled search logic (Negamax, Ordering, LMR, TT) for high maintainability and performance.
@@ -25,23 +25,13 @@ Axon is a high-performance, tournament-grade chess engine written in Go (Golang)
     - **Singular Extensions**: Extends the search for "forced" moves that are significantly better than alternatives.
     - **Check Extensions**: Automatically extends depth when the king is in check.
     - **Passed Pawn Extensions**: Automatically extends the search when a passed pawn reaches the 6th or 7th rank.
-- **Other Search Heuristics**:
-    - **ProbCut**: Aggressive pruning at high depths by searching with a narrow window and reduced depth.
-    - **Internal Iterative Deepening (IID)**: Performs a shallow search to find a candidate move when no Transposition Table move is available.
-
-### Move Ordering
-- **TT Move**: Prioritizes the best move found in previous search iterations.
-- **MVV-LVA**: Orders captures by Most Valuable Victim and Least Valuable Aggressor.
-- **Killer Moves & Countermove Heuristic**: Prioritizes quiet moves that have proven effective in similar branches.
-- **History Heuristic & Penalty**: Rewards moves that cause beta cutoffs and penalizes quiet moves that fail to improve alpha (Negative History).
 
 ### Evaluation (Hybrid HCE + NNUE)
+- **NNUE**: High-performance neural network evaluation (768 -> 256 -> 1 architecture) with SIMD-accelerated inference.
 - **Tapered HCE**: Dynamically interpolates between Midgame and Endgame scores using hand-crafted features.
-- **NNUE (In Progress)**: Currently supports incremental feature updates and high-performance data generation for neural network training.
 - **Refined King Safety**: Uses an attacking zone model and non-linear safety tables with piece-specific weighting.
-- **Advanced Pawn Evaluation**: Sophisticated logic for passed pawns, connected structures, and shields.
+- **Advanced Positional Evaluation**: Logic for non-linear mobility, outposts, and virtual mobility pressure.
 - **SPSA & Texel Tuning**: Support for both Local Search and SPSA (Simultaneous Perturbation Stochastic Approximation) for parameter optimization.
-- **Endgame Scaling**: Specialized logic for detecting insufficient material and scaling evaluations in drawish endgames.
 
 ## Getting Started
 
@@ -72,41 +62,20 @@ Axon is a command-line engine. Connect it to a UCI-compatible GUI for the best e
 - `uci`: Identify the engine and list available options.
 - `bench`: Runs a standardized performance test and reports NPS and node counts.
 - `eval`: Displays a detailed breakdown of the static evaluation.
-- `position startpos moves e2e4`: Setup the board and play a move.
-
-## Configuration (UCI Options)
-
-Axon can be configured using the `setoption name <Name> value <Value>` command.
-
-- **Hash**: Transposition table size in MB (Default: 64, Max: 65536).
-- **Threads**: Number of search threads (Default: 1, Max: 128).
-- **MultiPV**: Number of best move lines to analyze simultaneously (Default: 1). Optimized implementation using root-level TT exclusion for accurate analysis.
-- **Book File**: Path to a **Polyglot (.bin)** opening book.
-- **Book Best Move**: If true, the engine picks the move with the highest weight from the book.
-- **Move Overhead**: Time buffer in ms to account for network/GUI lag (Default: 10).
-- **Slow Mover**: Percentage multiplier for time management (Default: 100).
-- **Clear Hash**: Manually wipe the Transposition Table.
+- `count <file.epd>`: Counts the number of positions in an EPD file.
 
 ## Development Tools
 
-Axon includes a robust toolchain for engine development and automated tuning.
-
 ### Datagen (`cmd/datagen`)
-Generates high-quality EPD training data through multi-threaded self-play with opening book support.
+Generates high-quality EPD training data through multi-threaded self-play. Optimized for high volume (millions of positions) for NNUE training.
 
 ### Tuner (`cmd/tuner`)
-A multi-threaded optimizer supporting both **Texel (Local Search)** and **SPSA** methods. It minimizes Mean Squared Error (MSE) between evaluation and game results.
+A multi-threaded optimizer supporting both **Texel (Local Search)** and **SPSA** methods. Now supports non-linear mobility tables and automated feature precomputation.
 
 ### Applier (`cmd/apply`)
-An automated tool to parse tuner results (`.txt`) and inject the optimized parameters directly into the Go source code (`internal/eval/params.go`). Now supports piece-specific weights and table-based parameters with cross-package type awareness.
+Automated tool to inject tuned parameters directly into the Go source code (`internal/eval/params.go`).
 
-For detailed instructions, see the [Tuning Guide](TUNING_GUIDE.md).
-
-## Project Structure
-- `/internal/engine`: Core logic (Bitboards, MoveGen, Zobrist, Book Probing).
-- `/internal/search`: Modular search components (Negamax, Ordering, LMR, TT).
-- `/internal/eval`: Tapered evaluation, PSTs, and positional heuristics.
-- `/cmd`: Tuning, data generation, and parameter application utilities.
+For detailed instructions, see the [Tuning Guide](TUNING_GUIDE.md) and [Training Guide](TRAINING_GUIDE.md).
 
 ## License
 This project is licensed under the MIT License.

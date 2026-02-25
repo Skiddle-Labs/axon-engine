@@ -24,6 +24,11 @@ func (u *UCI) handleUCI() {
 	u.send("option name BookPath type string default ")
 	u.send("option name EvalFile type string default ")
 	u.send("option name Use NNUE type check default true")
+	u.send("option name AspirationDelta type spin default 15 min 1 max 500")
+	u.send("option name RFP_Margin type spin default 75 min 0 max 5000")
+	u.send("option name FP_Margin type spin default 100 min 0 max 5000")
+	u.send("option name NMP_Base type spin default 3 min 1 max 10")
+	u.send("option name NMP_Divisor type spin default 6 min 1 max 20")
 
 	u.send("uciok")
 }
@@ -93,5 +98,25 @@ func (u *UCI) handleSetOption(fields []string) {
 		}
 	case "use nnue":
 		nnue.UseNNUE = (value == "true")
+	case "aspirationdelta":
+		if v, err := strconv.Atoi(value); err == nil {
+			search.AspirationDelta = v
+		}
+	case "rfp_margin":
+		if v, err := strconv.Atoi(value); err == nil {
+			search.RFPMargin = v
+		}
+	case "fp_margin":
+		if v, err := strconv.Atoi(value); err == nil {
+			search.FPMargin = v
+		}
+	case "nmp_base":
+		if v, err := strconv.Atoi(value); err == nil {
+			search.NMPBase = v
+		}
+	case "nmp_divisor":
+		if v, err := strconv.Atoi(value); err == nil {
+			search.NMPDivisor = v
+		}
 	}
 }

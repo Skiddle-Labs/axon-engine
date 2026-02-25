@@ -117,6 +117,18 @@ func updateParams(content string, tunedParams map[string]int) string {
 			ctx.prefix = "KingAttackerWeight"
 			ctx.index = 0
 			continue
+		} else if strings.Contains(trimmed, "MobilityMG") || strings.Contains(trimmed, "MobilityEG") {
+			parts := strings.Fields(trimmed)
+			for _, p := range parts {
+				if strings.Contains(p, "Mobility") {
+					ctx.prefix = p
+					ctx.index = 0
+					break
+				}
+			}
+			if !strings.Contains(trimmed, "}") {
+				continue
+			}
 		}
 
 		// Detect Piece sub-blocks in PST
@@ -178,13 +190,15 @@ func updateParams(content string, tunedParams map[string]int) string {
 				}
 
 				paramName := ""
-				switch ctx.prefix {
-				case "SafetyTable":
+				switch {
+				case ctx.prefix == "SafetyTable":
 					paramName = fmt.Sprintf("SafetyTable[%d]", ctx.index)
-				case "KingAttackerWeight":
+				case ctx.prefix == "KingAttackerWeight":
 					if ctx.index < len(typeNames) {
 						paramName = fmt.Sprintf("KingAttackerWeight[%s]", typeNames[ctx.index])
 					}
+				case strings.Contains(ctx.prefix, "Mobility"):
+					paramName = fmt.Sprintf("%s[%d]", ctx.prefix, ctx.index)
 				default:
 					paramName = fmt.Sprintf("%s[%s][%d]", ctx.prefix, ctx.piece, ctx.index)
 				}
@@ -197,6 +211,9 @@ func updateParams(content string, tunedParams map[string]int) string {
 				ctx.index++
 			}
 			lines[i] = strings.Join(parts, ",") + commentPart
+			if strings.Contains(trimmed, "Mobility") && strings.Contains(trimmed, "}") {
+				ctx.prefix = ""
+			}
 		}
 	}
 

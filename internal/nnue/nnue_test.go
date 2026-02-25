@@ -133,3 +133,41 @@ func TestEvaluate_SIMD_Consistency(t *testing.T) {
 		t.Errorf("SIMD and pure Go evaluation mismatch (Black): Go=%d, SIMD=%d", pureGoScoreB, simdScoreB)
 	}
 }
+
+func TestAccumulator_SIMD_Consistency(t *testing.T) {
+	if !hasAVX2 {
+		t.Skip("AVX2 not supported on this hardware")
+	}
+
+	var accGo, accSIMD types.Accumulator
+	weights := make([]int16, types.L1Size)
+	for i := 0; i < types.L1Size; i++ {
+		weights[i] = int16(i%100 - 50)
+		accGo[i] = int16(i % 10)
+		accSIMD[i] = int16(i % 10)
+	}
+
+	// Test Update
+	for i := 0; i < types.L1Size; i++ {
+		accGo[i] += weights[i]
+	}
+	UpdateAccumulator(&accSIMD, weights)
+
+	for i := 0; i < types.L1Size; i++ {
+		if accGo[i] != accSIMD[i] {
+			t.Fatalf("UpdateAccumulator mismatch at index %d: Go=%d, SIMD=%d", i, accGo[i], accSIMD[i])
+		}
+	}
+
+	// Test Remove
+	for i := 0; i < types.L1Size; i++ {
+		accGo[i] -= weights[i]
+	}
+	RemoveAccumulator(&accSIMD, weights)
+
+	for i := 0; i < types.L1Size; i++ {
+		if accGo[i] != accSIMD[i] {
+			t.Fatalf("RemoveAccumulator mismatch at index %d: Go=%d, SIMD=%d", i, accGo[i], accSIMD[i])
+		}
+	}
+}

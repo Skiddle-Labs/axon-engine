@@ -21,88 +21,61 @@ The `datagen` tool generates training data by playing games against itself.
 ```bash
 # Windows
 go build -o datagen.exe ./cmd/datagen
-./datagen.exe -games 10000 -threads 8 -depth 8 -book opening_book.bin -out data.epd
-
-# Linux / macOS
-go build -o datagen ./cmd/datagen
-./datagen -games 10000 -threads 8 -depth 8 -book opening_book.bin -out data.epd
+./datagen.exe -games 100000 -threads 8 -depth 6 -out training_data.epd
 ```
 
-### Parameters
-- `-games`: Number of games to play.
-- `-depth`: Search depth for each move (Recommended: 6-10).
-- `-book`: Path to a Polyglot `.bin` book (Critical for variety).
-- `-minply`: Start recording after this many plies (Default: 16).
-- `-adj-score`: Adjudication threshold in centipawns to end games early (Default: 1000).
+### Tips for Datagen
+- **Volume**: For NNUE training, aim for 1M+ positions. For HCE tuning, 100k-500k is usually sufficient.
+- **Monitoring**: Use the `count` command in the main engine to check progress: `./axon.exe count training_data.epd`.
+- **Variety**: Use a depth of 6-8 and multiple threads. Lower depths generate more positions per second, which is often better for overall data variety.
 
 ---
 
 ## 2. Evaluation Tuning (`cmd/tuner`)
 
-The Axon tuner is a high-performance, multi-threaded tool that optimizes over 1,700 parameters simultaneously.
+The Axon tuner is a high-performance, multi-threaded tool that optimizes hundreds of parameters simultaneously, including Piece-Square Tables (PST) and non-linear mobility curves.
 
 ### High-Performance Features
-- **Feature Precomputation**: At startup, the tuner extracts all chess features (mobility, outposts, pawn structure) into a compact format. This allows the optimization loop to run thousands of times faster by avoiding redundant bitboard calculations.
-- **Multi-threading**: The Mean Squared Error (MSE) calculation is parallelized across all available CPU cores.
+- **Feature Precomputation**: Extracts mobility, outposts, and king safety features into a compact format before optimization.
+- **Non-Linear Mobility**: Automatically tunes every bin of the mobility tables for Knights, Bishops, Rooks, and Queens.
+- **SPSA Support**: Handles high-dimensional parameter spaces (like PSTs) much better than standard local search.
 
 ### Build and Run
 ```bash
 # Windows
 go build -o tuner.exe ./cmd/tuner
-./tuner.exe -file data.epd -method spsa -iterations 5000 -save tuned_params.txt
-
-# Linux / macOS
-go build -o tuner ./cmd/tuner
-./tuner -file data.epd -method spsa -iterations 5000 -save tuned_params.txt
+./tuner.exe -file training_data.epd -method spsa -iterations 5000 -save tuned_params.txt
 ```
 
 ### Optimization Methods
-- **SPSA (`-method spsa`)**: *Recommended.* Uses Simultaneous Perturbation Stochastic Approximation. It adjusts all parameters at once in every iteration. This is the only practical way to tune the 1,500+ PST values effectively.
-- **Local Search (`-method local`)**: Adjusts parameters one-by-one. Best for fine-tuning a small number of scalar values.
-
-### Tuning Parameters
-- `-iterations`: For SPSA, 5,000–50,000 is recommended for a large dataset.
-- `-threads`: Defaults to 80% of logical cores.
-- `-save`: The filename for the output results.
+- **SPSA (`-method spsa`)**: *Recommended.* Adjusts all parameters simultaneously. Use this for full PST and mobility tuning.
+- **Local Search (`-method local`)**: Adjusts parameters one-by-one. Best for small-scale calibration.
 
 ---
 
 ## 3. Automated Integration (`cmd/apply`)
 
-Axon provides a utility to automatically inject tuned parameters back into the engine. The evaluation parameters are stored in `internal/eval/params.go` to keep them isolated from the core logic.
+Axon provides a utility to automatically inject tuned parameters back into the engine's source code (`internal/eval/params.go`).
 
 ### How to Apply Results
-Once your tuner finishes and produces `tuned_params.txt`, run the applier utility:
-
 ```bash
 go run cmd/apply/main.go tuned_params.txt
 ```
 
-This script will:
-1. Parse the optimized values from your results file.
-2. Automatically update the arrays (`MgPST`, `EgPST`, `SafetyTable`, `KingAttackerWeight`) and scalars (`PawnMG`, `PawnStormMG`, etc.) in `internal/eval/params.go`.
-3. Correctly handle package-specific type prefixes (e.g., mapping `MgPST[Pawn]` to `types.Pawn`).
-4. Preserve the structure and comments of the source file.
+This script handles:
+1. **Scalars**: Material values, bonuses, and penalties.
+2. **Arrays**: Piece-Square Tables, Safety tables, and non-linear Mobility tables.
+3. **Type Mapping**: Automatically maps internal piece types (e.g., `Pawn`) to the correct Go syntax (`types.Pawn`).
 
 ### Rebuild the Engine
-After applying the parameters, recompile Axon to use the new weights:
 ```bash
-# Windows
 go build -o axon.exe .
-
-# Linux / macOS
-go build -o axon .
 ```
 
 ---
 
 ## Tips for Success
 
-- **Dataset Size**: Aim for at least **500,000 positions** for a full PST tune.
-- **SPSA Iterations**: SPSA is stochastic. If parameters aren't moving enough, increase the `-iterations`.
-- **Validation**: After applying parameters, run the `bench` command to verify the engine still performs as expected: `./axon.exe bench` (Windows) or `./axon bench` (Unix).
-- **Pawn Storm Calibration**: When adding new parameters like `PawnStormMG/EG`, run a short SPSA (5k-10k iterations) after applying your main results to calibrate the new weights.
-- **Iterative Improvement**: Tuning is a cycle. Use your new, stronger engine to generate a "higher quality" dataset for the next round of tuning.
-
----
-*Happy Tuning!*
+- **Dataset Size**: More is better. 500k positions is a good baseline for HCE tuning.
+- **Validation**: Always run `bench` after applying parameters to ensure no performance regression.
+- **Iterative Loop**: Use the tuned engine to generate even higher-quality data for the next tuning run.

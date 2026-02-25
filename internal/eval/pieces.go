@@ -35,28 +35,48 @@ func evaluatePieces(b *engine.Board, c types.Color) (int, int) {
 			}
 
 			// 2. Mobility and Positional Features
-			var attacks engine.Bitboard
+			// We use non-linear tables for mobility and count virtual mobility
+			// (attacks to squares occupied by own or enemy pieces).
+			var attacks, mobility engine.Bitboard
 			switch pt {
 			case types.Knight:
 				attacks = engine.KnightAttacks[sq]
-				mg += attacks.Count() * KnightMobilityMG
-				eg += attacks.Count() * KnightMobilityEG
+				mobility = attacks & ^b.Colors[c]
+				mg += KnightMobilityMG[mobility.Count()]
+				eg += KnightMobilityEG[mobility.Count()]
+
+				// Virtual mobility (pressure on occupied squares)
+				virtual := (attacks & b.Occupancy()).Count()
+				mg += virtual * VirtualMobilityMG
+				eg += virtual * VirtualMobilityEG
+
 				if isOutpost(b, c, sq) {
 					mg += KnightOutpostMG
 					eg += KnightOutpostEG
 				}
 			case types.Bishop:
 				attacks = engine.GetBishopAttacks(sq, occ)
-				mg += attacks.Count() * BishopMobilityMG
-				eg += attacks.Count() * BishopMobilityEG
+				mobility = attacks & ^b.Colors[c]
+				mg += BishopMobilityMG[mobility.Count()]
+				eg += BishopMobilityEG[mobility.Count()]
+
+				virtual := (attacks & b.Occupancy()).Count()
+				mg += virtual * VirtualMobilityMG
+				eg += virtual * VirtualMobilityEG
+
 				if isOutpost(b, c, sq) {
 					mg += BishopOutpostMG
 					eg += BishopOutpostEG
 				}
 			case types.Rook:
 				attacks = engine.GetRookAttacks(sq, occ)
-				mg += attacks.Count() * RookMobilityMG
-				eg += attacks.Count() * RookMobilityEG
+				mobility = attacks & ^b.Colors[c]
+				mg += RookMobilityMG[mobility.Count()]
+				eg += RookMobilityEG[mobility.Count()]
+
+				virtual := (attacks & b.Occupancy()).Count()
+				mg += virtual * VirtualMobilityMG
+				eg += virtual * VirtualMobilityEG
 
 				// File bonuses (Open/Half-Open)
 				file := sq.File()
@@ -75,8 +95,13 @@ func evaluatePieces(b *engine.Board, c types.Color) (int, int) {
 				}
 			case types.Queen:
 				attacks = engine.GetQueenAttacks(sq, occ)
-				mg += attacks.Count() * QueenMobilityMG
-				eg += attacks.Count() * QueenMobilityEG
+				mobility = attacks & ^b.Colors[c]
+				mg += QueenMobilityMG[mobility.Count()]
+				eg += QueenMobilityEG[mobility.Count()]
+
+				virtual := (attacks & b.Occupancy()).Count()
+				mg += virtual * VirtualMobilityMG
+				eg += virtual * VirtualMobilityEG
 			}
 		}
 	}

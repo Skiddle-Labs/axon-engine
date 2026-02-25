@@ -376,14 +376,45 @@ func getTunableParams() ([]*int, []string) {
 	names = append(names, "PawnPassedMG", "PawnPassedEG")
 
 	// Mobility
-	params = append(params, &eval.KnightMobilityMG, &eval.KnightMobilityEG)
-	names = append(names, "KnightMobilityMG", "KnightMobilityEG")
-	params = append(params, &eval.BishopMobilityMG, &eval.BishopMobilityEG)
-	names = append(names, "BishopMobilityMG", "BishopMobilityEG")
-	params = append(params, &eval.RookMobilityMG, &eval.RookMobilityEG)
-	names = append(names, "RookMobilityMG", "RookMobilityEG")
-	params = append(params, &eval.QueenMobilityMG, &eval.QueenMobilityEG)
-	names = append(names, "QueenMobilityMG", "QueenMobilityEG")
+	for i := range eval.KnightMobilityMG {
+		params = append(params, &eval.KnightMobilityMG[i])
+		names = append(names, fmt.Sprintf("KnightMobilityMG[%d]", i))
+	}
+	for i := range eval.KnightMobilityEG {
+		params = append(params, &eval.KnightMobilityEG[i])
+		names = append(names, fmt.Sprintf("KnightMobilityEG[%d]", i))
+	}
+	for i := range eval.BishopMobilityMG {
+		params = append(params, &eval.BishopMobilityMG[i])
+		names = append(names, fmt.Sprintf("BishopMobilityMG[%d]", i))
+	}
+	for i := range eval.BishopMobilityEG {
+		params = append(params, &eval.BishopMobilityEG[i])
+		names = append(names, fmt.Sprintf("BishopMobilityEG[%d]", i))
+	}
+	for i := range eval.RookMobilityMG {
+		params = append(params, &eval.RookMobilityMG[i])
+		names = append(names, fmt.Sprintf("RookMobilityMG[%d]", i))
+	}
+	for i := range eval.RookMobilityEG {
+		params = append(params, &eval.RookMobilityEG[i])
+		names = append(names, fmt.Sprintf("RookMobilityEG[%d]", i))
+	}
+	for i := range eval.QueenMobilityMG {
+		params = append(params, &eval.QueenMobilityMG[i])
+		names = append(names, fmt.Sprintf("QueenMobilityMG[%d]", i))
+	}
+	for i := range eval.QueenMobilityEG {
+		params = append(params, &eval.QueenMobilityEG[i])
+		names = append(names, fmt.Sprintf("QueenMobilityEG[%d]", i))
+	}
+
+	params = append(params, &eval.VirtualMobilityMG, &eval.VirtualMobilityEG)
+	params = append(params, &eval.KingShieldMissing, &eval.PawnStormMG, &eval.PawnStormEG)
+	names = append(names, "KingShieldMissing", "PawnStormMG", "PawnStormEG")
+	names = append(names, "VirtualMobilityMG", "VirtualMobilityEG")
+	params = append(params, &eval.KingShieldMissing, &eval.PawnStormMG, &eval.PawnStormEG)
+	names = append(names, "KingShieldMissing", "PawnStormMG", "PawnStormEG")
 
 	// Other
 	params = append(params, &eval.BishopPairMG, &eval.BishopPairEG)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"math/rand"
@@ -85,6 +86,8 @@ func main() {
 		return
 	}
 	defer file.Close()
+	writer := bufio.NewWriterSize(file, 1024*1024)
+	defer writer.Flush()
 
 	var wg sync.WaitGroup
 	gamesRemaining := int32(*numGames)
@@ -113,7 +116,7 @@ func main() {
 
 				positions, result := PlaySingleGame(startFen, book, rng)
 				if len(positions) > 0 {
-					SaveGame(file, positions, result)
+					SaveGame(writer, positions, result)
 					atomic.AddUint64(&totalPositions, uint64(len(positions)))
 				}
 
@@ -173,29 +176,10 @@ func PlaySingleGame(fen string, book *engine.PolyglotBook, rng *rand.Rand) ([]st
 	lastScore := 0
 
 	// 2. Self-play with search
+	eng := search.NewEngine(board)
+	eng.Silent = true
+
 	for ply := 0; ply < 400; ply++ {
-		// Basic terminal state check
-		ml := board.GenerateMoves()
-		hasLegal := false
-		for i := 0; i < ml.Count; i++ {
-			if board.MakeMove(ml.Moves[i]) {
-				board.UnmakeMove(ml.Moves[i])
-				hasLegal = true
-				break
-			}
-		}
-
-		if !hasLegal {
-			inCheck := board.IsSquareAttacked(board.Pieces[board.SideToMove][types.King].LSB(), board.SideToMove^1)
-			if inCheck {
-				if board.SideToMove == types.White {
-					return positions, ResultLoss
-				}
-				return positions, ResultWin
-			}
-			return positions, ResultDraw
-		}
-
 		// Adjudication & Draw detections
 		if board.HalfMoveClock >= 100 {
 			return positions, ResultDraw
@@ -203,21 +187,27 @@ func PlaySingleGame(fen string, book *engine.PolyglotBook, rng *rand.Rand) ([]st
 
 		// Simplified 3-fold repetition
 		reps := 0
-		for i := 0; i < board.Ply; i++ {
+		for i := board.Ply - 4; i >= 0 && i >= board.Ply-int(board.HalfMoveClock); i -= 2 {
 			if board.History[i].Hash == board.Hash {
 				reps++
+				if reps >= 2 {
+					return positions, ResultDraw
+				}
 			}
-		}
-		if reps >= 2 {
-			return positions, ResultDraw
 		}
 
 		// Search for move
-		eng := search.NewEngine(board)
-		eng.Silent = true
 		move := eng.Search(*searchDepth)
 
 		if move == engine.NoMove {
+			kingSq := board.Pieces[board.SideToMove][types.King].LSB()
+			inCheck := board.IsSquareAttacked(kingSq, board.SideToMove^1)
+			if inCheck {
+				if board.SideToMove == types.White {
+					return positions, ResultLoss
+				}
+				return positions, ResultWin
+			}
 			return positions, ResultDraw
 		}
 
@@ -255,7 +245,8 @@ func PlaySingleGame(fen string, book *engine.PolyglotBook, rng *rand.Rand) ([]st
 		// Filter and record position
 		if board.Ply >= *minPly && board.Ply <= *maxPly {
 			// Skip positions that are in check or have too high/low eval (unstable)
-			inCheck := board.IsSquareAttacked(board.Pieces[board.SideToMove][types.King].LSB(), board.SideToMove^1)
+			kingSq := board.Pieces[board.SideToMove][types.King].LSB()
+			inCheck := board.IsSquareAttacked(kingSq, board.SideToMove^1)
 			if !inCheck && lastScore < 2000 && lastScore > -2000 {
 				fen := GetEPDFEN(board)
 				positions = append(positions, fen)
@@ -271,8 +262,8 @@ func PlaySingleGame(fen string, book *engine.PolyglotBook, rng *rand.Rand) ([]st
 }
 
 func GetEPDFEN(b *engine.Board) string {
-	fields := make([]string, 0, 4)
-	var pieces strings.Builder
+	var sb strings.Builder
+	sb.Grow(90)
 	for r := 7; r >= 0; r-- {
 		empty := 0
 		for f := 0; f < 8; f++ {
@@ -281,48 +272,55 @@ func GetEPDFEN(b *engine.Board) string {
 				empty++
 			} else {
 				if empty > 0 {
-					pieces.WriteString(fmt.Sprintf("%d", empty))
+					sb.WriteByte(byte('0' + empty))
 					empty = 0
 				}
-				pieces.WriteString(GetPieceChar(p))
+				sb.WriteByte(".PNBRQKpnbrqk"[p])
 			}
 		}
 		if empty > 0 {
-			pieces.WriteString(fmt.Sprintf("%d", empty))
+			sb.WriteByte(byte('0' + empty))
 		}
 		if r > 0 {
-			pieces.WriteByte('/')
+			sb.WriteByte('/')
 		}
 	}
-	fields = append(fields, pieces.String())
+
+	sb.WriteByte(' ')
 	if b.SideToMove == types.White {
-		fields = append(fields, "w")
+		sb.WriteByte('w')
 	} else {
-		fields = append(fields, "b")
+		sb.WriteByte('b')
 	}
-	castling := ""
-	if b.Castling&engine.WhiteKingside != 0 {
-		castling += "K"
-	}
-	if b.Castling&engine.WhiteQueenside != 0 {
-		castling += "Q"
-	}
-	if b.Castling&engine.BlackKingside != 0 {
-		castling += "k"
-	}
-	if b.Castling&engine.BlackQueenside != 0 {
-		castling += "q"
-	}
-	if castling == "" {
-		castling = "-"
-	}
-	fields = append(fields, castling)
-	if b.EnPassant != types.NoSquare {
-		fields = append(fields, b.EnPassant.String())
+
+	sb.WriteByte(' ')
+	if b.Castling == 0 {
+		sb.WriteByte('-')
 	} else {
-		fields = append(fields, "-")
+		if b.Castling&engine.WhiteKingside != 0 {
+			sb.WriteByte('K')
+		}
+		if b.Castling&engine.WhiteQueenside != 0 {
+			sb.WriteByte('Q')
+		}
+		if b.Castling&engine.BlackKingside != 0 {
+			sb.WriteByte('k')
+		}
+		if b.Castling&engine.BlackQueenside != 0 {
+			sb.WriteByte('q')
+		}
 	}
-	return strings.Join(fields, " ")
+
+	sb.WriteByte(' ')
+	if b.EnPassant == types.NoSquare {
+		sb.WriteByte('-')
+	} else {
+		sq := b.EnPassant
+		sb.WriteByte(byte('a' + sq.File()))
+		sb.WriteByte(byte('1' + sq.Rank()))
+	}
+
+	return sb.String()
 }
 
 func GetPieceChar(p types.Piece) string {
@@ -332,19 +330,20 @@ func GetPieceChar(p types.Piece) string {
 
 var fileMutex sync.Mutex
 
-func SaveGame(file *os.File, positions []string, result GameResult) {
+func SaveGame(writer *bufio.Writer, positions []string, result GameResult) {
 	fileMutex.Lock()
 	defer fileMutex.Unlock()
 
-	resStr := "0.5"
+	resStr := " [0.5]\n"
 	if result == ResultWin {
-		resStr = "1.0"
+		resStr = " [1.0]\n"
 	} else if result == ResultLoss {
-		resStr = "0.0"
+		resStr = " [0.0]\n"
 	}
 
 	for _, fen := range positions {
-		// EPD format: FEN [result]
-		fmt.Fprintf(file, "%s [%s]\n", fen, resStr)
+		writer.WriteString(fen)
+		writer.WriteString(resStr)
 	}
+	writer.Flush()
 }

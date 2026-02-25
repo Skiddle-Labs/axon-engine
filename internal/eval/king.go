@@ -30,6 +30,8 @@ func evaluateKingSafety(b *engine.Board, c types.Color) (int, int) {
 						mg += KingShieldClose
 					} else if rank < 6 && pawns.Test(types.NewSquare(fIdx, rank+2)) {
 						mg += KingShieldFar
+					} else {
+						mg += KingShieldMissing
 					}
 				}
 			}
@@ -42,6 +44,8 @@ func evaluateKingSafety(b *engine.Board, c types.Color) (int, int) {
 						mg += KingShieldClose
 					} else if rank > 1 && pawns.Test(types.NewSquare(fIdx, rank-2)) {
 						mg += KingShieldFar
+					} else {
+						mg += KingShieldMissing
 					}
 				}
 			}

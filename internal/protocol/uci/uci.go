@@ -89,6 +89,8 @@ func (u *UCI) Start() {
 			u.handleEval()
 		case "bench":
 			u.handleBench(fields)
+		case "count":
+			u.handleCount(fields)
 		}
 	}
 }

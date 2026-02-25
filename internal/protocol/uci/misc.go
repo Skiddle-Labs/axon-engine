@@ -1,7 +1,9 @@
 package uci
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -53,4 +55,31 @@ func (u *UCI) handleBench(fields []string) {
 	}
 
 	u.send(fmt.Sprintf("Bench: %d nodes, %d nps, %v time", nodes, nps, elapsed))
+}
+
+func (u *UCI) handleCount(fields []string) {
+	filename := "training_data.epd"
+	if len(fields) > 1 {
+		filename = fields[1]
+	}
+
+	file, err := os.Open(filename)
+	if err != nil {
+		u.send(fmt.Sprintf("info string Error: could not open %s", filename))
+		return
+	}
+	defer file.Close()
+
+	count := 0
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		count++
+	}
+
+	if err := scanner.Err(); err != nil {
+		u.send(fmt.Sprintf("info string Error reading %s: %v", filename, err))
+		return
+	}
+
+	u.send(fmt.Sprintf("info string Total positions in %s: %d", filename, count))
 }
