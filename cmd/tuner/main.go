@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 
 	"github.com/Skiddle-Labs/axon-engine/internal/engine"
 	"github.com/Skiddle-Labs/axon-engine/internal/eval"
@@ -21,6 +24,7 @@ type Entry struct {
 var (
 	dataFile = flag.String("file", "", "Path to the training data file (EPD format)")
 	maxIters = flag.Int("iterations", 0, "Number of iterations (0 for until no improvement)")
+	threads  = flag.Int("threads", runtime.NumCPU(), "Number of threads to use for MSE calculation")
 )
 
 func main() {
@@ -33,7 +37,7 @@ func main() {
 
 	if filePath == "" {
 		fmt.Println("Axon Tuner - Texel Method")
-		fmt.Println("Usage: tuner -file <datafile.epd> [-iterations <n>]")
+		fmt.Println("Usage: tuner -file <datafile.epd> [-iterations <n>] [-threads <t>]")
 		flag.PrintDefaults()
 		return
 	}
@@ -50,9 +54,9 @@ func main() {
 	}
 
 	fmt.Printf("Loaded %d positions for tuning.\n", len(entries))
+	fmt.Printf("Using %d threads.\n", *threads)
 
 	// Step 1: Find the optimal scaling constant K for the sigmoid function.
-	// This constant maps centipawn scores to expected game results.
 	fmt.Print("Calculating optimal K... ")
 	bestK := FindBestK(entries)
 	fmt.Printf("Done. Best K: %.4f\n", bestK)
@@ -81,7 +85,6 @@ func LoadEntries(path string) ([]Entry, error) {
 		found := false
 
 		if strings.Contains(line, "[") {
-			// Format: <FEN> [1.0]
 			parts := strings.Split(line, "[")
 			fen = strings.TrimSpace(parts[0])
 			resStr := strings.Trim(parts[1], " ]")
@@ -94,7 +97,6 @@ func LoadEntries(path string) ([]Entry, error) {
 				result, found = 0.0, true
 			}
 		} else {
-			// Format: <FEN> ... "1-0"; or "1/2-1/2" or "0-1"
 			if strings.Contains(line, "\"1-0\"") {
 				result, found = 1.0, true
 			} else if strings.Contains(line, "\"1/2-1/2\"") {
@@ -128,37 +130,67 @@ func LoadEntries(path string) ([]Entry, error) {
 	return entries, scanner.Err()
 }
 
-// Sigmoid maps an evaluation score to a predicted game result (0.0 to 1.0).
 func Sigmoid(score, k float64) float64 {
 	return 1.0 / (1.0 + math.Pow(10, -k*score/400.0))
 }
 
-// CalculateMSE computes the Mean Squared Error between static evaluations and game results.
-func CalculateMSE(entries []Entry, k float64) float64 {
-	errorSum := 0.0
-	for _, e := range entries {
-		// Static evaluation from the perspective of the side to move.
-		score := float64(eval.Evaluate(e.board))
+// CalculateMSEParallel computes the Mean Squared Error using multiple threads.
+func CalculateMSEParallel(entries []Entry, k float64) float64 {
+	numThreads := *threads
+	if numThreads <= 0 {
+		numThreads = 1
+	}
 
-		// If side to move is black, the result needs to be inverted for comparison.
-		actualResult := e.result
-		if e.board.SideToMove == engine.Black {
-			actualResult = 1.0 - actualResult
+	chunkSize := (len(entries) + numThreads - 1) / numThreads
+	var totalError uint64 // Using bits for atomic storage of float64
+
+	var wg sync.WaitGroup
+	for i := 0; i < numThreads; i++ {
+		start := i * chunkSize
+		if start >= len(entries) {
+			break
+		}
+		end := start + chunkSize
+		if end > len(entries) {
+			end = len(entries)
 		}
 
-		prediction := Sigmoid(score, k)
-		errorSum += math.Pow(actualResult-prediction, 2)
+		wg.Add(1)
+		go func(s, e int) {
+			defer wg.Done()
+			localError := 0.0
+			for j := s; j < e; j++ {
+				entry := entries[j]
+				score := float64(eval.Evaluate(entry.board))
+				actualResult := entry.result
+				if entry.board.SideToMove == engine.Black {
+					actualResult = 1.0 - actualResult
+				}
+				prediction := Sigmoid(score, k)
+				localError += math.Pow(actualResult-prediction, 2)
+			}
+
+			// Atomic add for float64
+			for {
+				oldBits := atomic.LoadUint64(&totalError)
+				newBits := math.Float64bits(math.Float64frombits(oldBits) + localError)
+				if atomic.CompareAndSwapUint64(&totalError, oldBits, newBits) {
+					break
+				}
+			}
+		}(start, end)
 	}
-	return errorSum / float64(len(entries))
+	wg.Wait()
+
+	return math.Float64frombits(atomic.LoadUint64(&totalError)) / float64(len(entries))
 }
 
 func FindBestK(entries []Entry) float64 {
 	bestK := 0.0
 	minError := math.MaxFloat64
 
-	// Search for K that minimizes MSE
 	for k := 0.1; k <= 2.0; k += 0.01 {
-		err := CalculateMSE(entries, k)
+		err := CalculateMSEParallel(entries, k)
 		if err < minError {
 			minError = err
 			bestK = k
@@ -169,7 +201,7 @@ func FindBestK(entries []Entry) float64 {
 
 func RunTuning(entries []Entry, k float64, maxIterations int) {
 	params, names := getTunableParams()
-	bestMSE := CalculateMSE(entries, k)
+	bestMSE := CalculateMSEParallel(entries, k)
 
 	fmt.Printf("Initial MSE: %.10f\n", bestMSE)
 	fmt.Println("Starting Local Search optimization...")
@@ -185,24 +217,26 @@ func RunTuning(entries []Entry, k float64, maxIterations int) {
 		improved := false
 		fmt.Printf("Iteration %d | Current MSE: %.10f\n", iteration, bestMSE)
 
-		for _, p := range params {
+		for i, p := range params {
 			oldVal := *p
 
 			// Try increasing
 			*p = oldVal + 1
-			newMSE := CalculateMSE(entries, k)
+			newMSE := CalculateMSEParallel(entries, k)
 			if newMSE < bestMSE {
 				bestMSE = newMSE
 				improved = true
+				fmt.Printf("  %s: %d -> %d (MSE: %.10f)\n", names[i], oldVal, *p, bestMSE)
 				continue
 			}
 
 			// Try decreasing
 			*p = oldVal - 1
-			newMSE = CalculateMSE(entries, k)
+			newMSE = CalculateMSEParallel(entries, k)
 			if newMSE < bestMSE {
 				bestMSE = newMSE
 				improved = true
+				fmt.Printf("  %s: %d -> %d (MSE: %.10f)\n", names[i], oldVal, *p, bestMSE)
 				continue
 			}
 
@@ -216,7 +250,7 @@ func RunTuning(entries []Entry, k float64, maxIterations int) {
 			break
 		}
 
-		if iteration%10 == 0 {
+		if iteration%1 == 0 {
 			printParams(params, names)
 		}
 		iteration++
@@ -260,12 +294,9 @@ func getTunableParams() ([]*int, []string) {
 }
 
 func printParams(params []*int, names []string) {
-	fmt.Println("\n--- Current Parameter Values ---")
-	for i := 0; i < len(params); i++ {
-		// Only print major values or non-zero changes if too many
-		if i < 10 {
-			fmt.Printf("%s: %d\n", names[i], *params[i])
-		}
+	fmt.Println("\n--- Current Material & Key Parameters ---")
+	for i := 0; i < 10; i++ {
+		fmt.Printf("%s: %d\n", names[i], *params[i])
 	}
-	fmt.Println("--------------------------------")
+	fmt.Println("-----------------------------------------")
 }
