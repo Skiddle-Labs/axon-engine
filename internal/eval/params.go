@@ -24,9 +24,9 @@ var (
 	PawnDoubledEG   = -7
 	PawnIsolatedMG  = -14
 	PawnIsolatedEG  = -8
-	PawnSupportedMG = 22
+	PawnSupportedMG = 23
 	PawnSupportedEG = 8
-	PawnPhalanxMG   = 5
+	PawnPhalanxMG   = 4
 	PawnPhalanxEG   = 5
 	PawnBackwardMG  = -14
 	PawnBackwardEG  = -8
@@ -36,9 +36,9 @@ var (
 
 // Mobility Weights
 var (
-	KnightMobilityMG = 6
+	KnightMobilityMG = 5
 	KnightMobilityEG = 7
-	BishopMobilityMG = 8
+	BishopMobilityMG = 7
 	BishopMobilityEG = 6
 	RookMobilityMG   = 6
 	RookMobilityEG   = 9

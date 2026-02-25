@@ -22,6 +22,7 @@ var (
 	randomMoves = flag.Int("random", 8, "Number of random moves at start")
 	bookFile    = flag.String("book", "", "Path to Polyglot book file (optional)")
 	outputFile  = flag.String("out", "data.epd", "Output file for training data")
+	inputEPD    = flag.String("input", "", "Path to input EPD file for starting positions (optional)")
 	minPly      = flag.Int("minply", 16, "Minimum ply to start recording positions")
 	maxPly      = flag.Int("maxply", 200, "Maximum ply to stop recording positions")
 	adjScore    = flag.Int("adj-score", 1000, "Adjudication score (centipawns) to end games early")
@@ -54,6 +55,27 @@ func main() {
 		fmt.Printf("Using opening book: %s\n", *bookFile)
 	}
 
+	// Load input EPDs if provided
+	var inputFens []string
+	if *inputEPD != "" {
+		data, err := os.ReadFile(*inputEPD)
+		if err != nil {
+			fmt.Printf("Error reading input EPD: %v\n", err)
+			return
+		}
+		lines := strings.Split(string(data), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line != "" && !strings.HasPrefix(line, "#") {
+				inputFens = append(inputFens, line)
+			}
+		}
+		fmt.Printf("Loaded %d starting positions from %s\n", len(inputFens), *inputEPD)
+		if *numGames > len(inputFens) {
+			*numGames = len(inputFens)
+		}
+	}
+
 	// Shared TT with adequate size for high-concurrency shallow searches
 	search.GlobalTT = search.NewTranspositionTable(256)
 
@@ -78,8 +100,18 @@ func main() {
 			// Local random source to avoid global mutex contention
 			rng := rand.New(rand.NewSource(time.Now().UnixNano() + int64(threadID)))
 
-			for atomic.AddInt32(&gamesRemaining, -1) >= 0 {
-				positions, result := PlaySingleGame(book, rng)
+			for {
+				idx := int(atomic.AddInt32(&gamesRemaining, -1))
+				if idx < 0 {
+					break
+				}
+
+				startFen := "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+				if len(inputFens) > 0 {
+					startFen = inputFens[idx]
+				}
+
+				positions, result := PlaySingleGame(startFen, book, rng)
 				if len(positions) > 0 {
 					SaveGame(file, positions, result)
 					atomic.AddUint64(&totalPositions, uint64(len(positions)))
@@ -104,9 +136,11 @@ func main() {
 		posCount, duration, float64(posCount)/duration)
 }
 
-func PlaySingleGame(book *engine.PolyglotBook, rng *rand.Rand) ([]string, GameResult) {
+func PlaySingleGame(fen string, book *engine.PolyglotBook, rng *rand.Rand) ([]string, GameResult) {
 	board := engine.NewBoard()
-	board.SetFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+	if err := board.SetFEN(fen); err != nil {
+		return nil, ResultDraw
+	}
 
 	// 1. Randomization phase (Book + Random moves)
 	for i := 0; i < *randomMoves; i++ {

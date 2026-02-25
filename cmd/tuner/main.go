@@ -97,8 +97,8 @@ func LoadEntries(path string) ([]Entry, error) {
 	var entries []Entry
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
 
@@ -106,37 +106,88 @@ func LoadEntries(path string) ([]Entry, error) {
 		var result float64
 		found := false
 
-		if strings.Contains(line, "[") {
-			parts := strings.Split(line, "[")
-			fen = strings.TrimSpace(parts[0])
-			resStr := strings.Trim(parts[1], " ]")
-			switch resStr {
-			case "1.0":
+		// 1. Try to find the result in common EPD/Texel/PGN formats
+		if strings.Contains(line, "[1.0]") || strings.Contains(line, "\"1-0\"") || strings.Contains(line, " 1-0") || strings.Contains(line, " 1.0") {
+			result, found = 1.0, true
+		} else if strings.Contains(line, "[0.5]") || strings.Contains(line, "\"1/2-1/2\"") || strings.Contains(line, " 1/2-1/2") || strings.Contains(line, " 0.5") {
+			result, found = 0.5, true
+		} else if strings.Contains(line, "[0.0]") || strings.Contains(line, "\"0-1\"") || strings.Contains(line, " 0-1") || strings.Contains(line, " 0.0") {
+			result, found = 0.0, true
+		}
+
+		// 2. Fallback: Search all fields for a result marker or evaluation tags
+		fields := strings.Fields(line)
+		if !found && len(fields) > 0 {
+			// Check the very last field first (common in some EPD formats)
+			lastField := strings.Trim(fields[len(fields)-1], "\";,[]")
+			switch lastField {
+			case "1-0", "1.0", "1":
 				result, found = 1.0, true
-			case "0.5":
+			case "1/2-1/2", "0.5", "1/2":
 				result, found = 0.5, true
-			case "0.0":
-				result, found = 0.0, true
-			}
-		} else {
-			if strings.Contains(line, "\"1-0\"") {
-				result, found = 1.0, true
-			} else if strings.Contains(line, "\"1/2-1/2\"") {
-				result, found = 0.5, true
-			} else if strings.Contains(line, "\"0-1\"") {
+			case "0-1", "0.0", "0":
 				result, found = 0.0, true
 			}
 
-			if found {
-				fen = line
-				if idx := strings.Index(line, "c9"); idx != -1 {
-					fen = strings.TrimSpace(line[:idx])
-				} else if idx := strings.Index(line, ";"); idx != -1 {
-					fen = strings.TrimSpace(line[:idx])
+			for i, f := range fields {
+				if found {
+					break
+				}
+				clean := strings.Trim(f, "\";,[]")
+				switch clean {
+				case "1-0", "1.0", "1":
+					result, found = 1.0, true
+				case "1/2-1/2", "0.5", "1/2":
+					result, found = 0.5, true
+				case "0-1", "0.0", "0":
+					result, found = 0.0, true
+				case "ce", "v":
+					// If we find an evaluation tag (ce or v), use it to generate a synthetic result
+					if i+1 < len(fields) {
+						var evalScore float64
+						_, err := fmt.Sscanf(strings.Trim(fields[i+1], "\";,[]"), "%f", &evalScore)
+						if err == nil {
+							// Use a standard sigmoid to convert centipawns to win probability
+							// K=0.75 is a reasonable default for engine evals
+							result = Sigmoid(evalScore, 0.75)
+							found = true
+						}
+					}
+				}
+				if found {
+					break
 				}
 			}
 		}
 
+		// 3. Extract FEN
+		// Usually the first 4 or 6 fields are the FEN.
+		// We'll try to join fields until we have a valid FEN or hit a marker.
+		fenIdx := 0
+		for i, field := range fields {
+			clean := strings.Trim(field, "\";,[]")
+			if strings.ContainsAny(field, "[;\"") ||
+				clean == "1-0" || clean == "1/2-1/2" || clean == "0-1" ||
+				clean == "1.0" || clean == "0.5" || clean == "0.0" ||
+				clean == "1" || clean == "0" || clean == "1/2" ||
+				clean == "ce" || clean == "v" {
+				fenIdx = i
+				break
+			}
+			if i == 5 { // Standard FEN has 6 fields
+				fenIdx = 6
+				break
+			}
+			fenIdx = i + 1
+		}
+
+		if fenIdx < 4 {
+			// Minimal FEN is pieces, side, castling, ep
+			continue
+		}
+		fen = strings.Join(fields[:fenIdx], " ")
+
+		// Final check: If no result was found via tags, we can't use it for Texel tuning
 		if !found {
 			continue
 		}
