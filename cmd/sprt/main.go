@@ -37,6 +37,8 @@ var (
 	elo1      = flag.Float64("elo1", 5.0, "SPRT H1 Elo bound")
 	alpha     = flag.Float64("alpha", 0.05, "SPRT Alpha")
 	beta      = flag.Float64("beta", 0.05, "SPRT Beta")
+	newEval   = flag.String("new-eval", "", "NNUE file for the candidate")
+	oldEval   = flag.String("old-eval", "", "NNUE file for the reference")
 )
 
 func main() {
@@ -60,16 +62,30 @@ func main() {
 
 func runMatch(cfg SPRTConfig) {
 	// Build cutechess-cli command
-	args := []string{
-		"-engine", "name=Candidate", "cmd=" + *engineNew,
-		"-engine", "name=Reference", "cmd=" + *engineOld,
-		"-each", "proto=uci", "tc=" + *tc,
+	var args []string
+
+	candArgs := []string{"name=Candidate", "cmd=" + *engineNew}
+	if *newEval != "" {
+		candArgs = append(candArgs, "option.EvalFile="+*newEval)
+	}
+	args = append(args, "-engine")
+	args = append(args, candArgs...)
+
+	refArgs := []string{"name=Reference", "cmd=" + *engineOld}
+	if *oldEval != "" {
+		refArgs = append(refArgs, "option.EvalFile="+*oldEval)
+	}
+	args = append(args, "-engine")
+	args = append(args, refArgs...)
+
+	args = append(args,
+		"-each", "proto=uci", "tc="+*tc,
 		"-concurrency", strconv.Itoa(*threads),
 		"-repeat",
 		"-recover",
-		"-games", "20000", // High limit, SPRT will stop it
+		"-games", "20000",
 		"-pgnout", "sprt_games.pgn",
-	}
+	)
 
 	if *book != "" {
 		if _, err := os.Stat(*book); err == nil {
@@ -180,7 +196,7 @@ func calculateLLR(r Result, cfg SPRTConfig) float64 {
 	varX := (w*1.0 + d*0.25 + l*0.0) - mu*mu
 
 	if varX <= 0 {
-		return 0
+		varX = 0.01 // Epsilon to prevent division by zero
 	}
 
 	return n * (mu1 - mu0) * (2*mu - mu0 - mu1) / (2 * varX)
