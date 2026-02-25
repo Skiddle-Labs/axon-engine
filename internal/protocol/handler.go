@@ -11,6 +11,7 @@ import (
 
 	"github.com/Skiddle-Labs/axon-engine/internal/engine"
 	"github.com/Skiddle-Labs/axon-engine/internal/eval"
+	"github.com/Skiddle-Labs/axon-engine/internal/logger"
 	"github.com/Skiddle-Labs/axon-engine/internal/search"
 )
 
@@ -57,12 +58,14 @@ func NewProtocol(input io.Reader, output io.Writer) *Protocol {
 
 // Start begins the main loop for processing UCI commands.
 func (p *Protocol) Start() {
+	logger.Info("UCI Protocol handler started")
 	for p.reader.Scan() {
 		line := strings.TrimSpace(p.reader.Text())
 		if line == "" {
 			continue
 		}
 
+		logger.Debug("<< %s", line)
 		parts := strings.Fields(line)
 		command := parts[0]
 
@@ -112,6 +115,7 @@ func (p *Protocol) handleUCI() {
 	p.send("option name Book File type string default <none>")
 	p.send("option name Book Best Move type check default false")
 	p.send("option name Book Depth type spin default 255 min 0 max 255")
+	p.send("option name Log File type string default <none>")
 	p.send("uciok")
 }
 
@@ -344,6 +348,8 @@ func (p *Protocol) handleGo(parts []string) {
 			timeLimit = 1 * time.Millisecond
 		}
 
+		logger.Info("Time allocation: %v (Soft limit: %v)", timeLimit, (timeLimit*6)/10)
+
 		if !p.isPondering {
 			p.search.TimeLimit = timeLimit
 			p.search.SoftLimit = (timeLimit * 6) / 10
@@ -401,6 +407,7 @@ func (p *Protocol) handleGo(parts []string) {
 		} else {
 			p.send(fmt.Sprintf("bestmove %s", moveStr))
 		}
+		logger.Info("Search finished. Best move: %s", moveStr)
 
 		// Age persistent history table to favor more recent search results
 		for c := 0; c < 2; c++ {
@@ -442,6 +449,7 @@ func (p *Protocol) handleUCINewGame() {
 }
 
 func (p *Protocol) handleSetOption(parts []string) {
+	logger.Info("SetOption: %v", parts)
 	namePart := ""
 	valuePart := ""
 	parsingName := false
@@ -525,7 +533,13 @@ func (p *Protocol) handleSetOption(parts []string) {
 		if v, err := strconv.Atoi(value); err == nil {
 			p.bookDepth = v
 		}
-	} else if name == "move overhead" {
+	} else if name == "log file" {
+		if err := logger.SetFile(value); err != nil {
+			p.send(fmt.Sprintf("info string Error opening log file: %v", err))
+		} else {
+			logger.SetEnabled(true)
+			logger.Info("Logging enabled to file: %s", value)
+		}
 	}
 }
 
@@ -613,5 +627,6 @@ func (p *Protocol) handleBench() {
 }
 
 func (p *Protocol) send(msg string) {
+	logger.Debug(">> %s", msg)
 	fmt.Fprintln(p.writer, msg)
 }

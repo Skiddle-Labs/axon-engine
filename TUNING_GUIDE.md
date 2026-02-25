@@ -69,7 +69,7 @@ go run cmd/apply/main.go tuned_params.txt
 
 This script will:
 1. Parse the 1,700+ values from your results file.
-2. Automatically update the arrays (`MgPST`, `EgPST`, `SafetyTable`) and scalars (`PawnMG`, `RookMobilityEG`, etc.) in `internal/eval/params.go`.
+2. Automatically update the arrays (`MgPST`, `EgPST`, `SafetyTable`) and scalars (`PawnMG`, `PawnStormMG`, etc.) in `internal/eval/params.go`.
 3. Preserve the structure and comments of the source file.
 
 ### Rebuild the Engine

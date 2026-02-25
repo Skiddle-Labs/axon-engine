@@ -365,6 +365,8 @@ func getTunableParams() ([]*int, []string) {
 	// King Safety
 	params = append(params, &eval.KingShieldClose, &eval.KingShieldFar)
 	names = append(names, "KingShieldClose", "KingShieldFar")
+	params = append(params, &eval.PawnStormMG, &eval.PawnStormEG)
+	names = append(names, "PawnStormMG", "PawnStormEG")
 
 	for pt := engine.Knight; pt <= engine.Queen; pt++ {
 		params = append(params, &eval.KingAttackerWeight[pt])

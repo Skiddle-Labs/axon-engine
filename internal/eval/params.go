@@ -78,6 +78,8 @@ var KingAttackerWeight = [7]int{
 var (
 	KingShieldClose = 18
 	KingShieldFar   = 10
+	PawnStormMG     = -15
+	PawnStormEG     = -5
 )
 
 var SafetyTable = [100]int{

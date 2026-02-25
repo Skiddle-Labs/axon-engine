@@ -8,29 +8,32 @@ Axon is a high-performance, tournament-grade chess engine written in Go (Golang)
 - **Bitboards**: High-speed board representation using 64-bit integers for all piece types and occupancy masks.
 - **Zobrist Hashing**: Efficient, incremental position hashing for Transposition Table lookups, repetition detection, and Polyglot-compatible book probing.
 - **Precomputed Attacks**: Fast lookup tables for leapers (Kings, Knights) and Ray-casting (Magic Bitboards) for sliding pieces.
-- **SEE (Static Exchange Evaluation)**: Accurately calculates the material balance of capture sequences.
+- **SEE (Static Exchange Evaluation)**: Accurately calculates the material balance of capture sequences to prune losing captures.
 
 ### Search Algorithms
-- **Parallel Search (Lazy SMP)**: Scalable search performance using multiple CPU cores with a lockless Transposition Table.
+- **Modular Search Architecture**: Decoupled search logic (Negamax, Ordering, LMR, TT) for high maintainability and performance.
+- **Parallel Search (Lazy SMP)**: Scalable search performance using multiple CPU cores with a high-speed lockless Transposition Table.
 - **Principal Variation Search (PVS)**: Optimized Alpha-Beta pruning focusing on the most promising moves.
 - **Advanced Pruning & Reductions**:
+    - **Adaptive Null Move Pruning (NMP)**: Dynamic reduction (`3 + depth/6`) for aggressive pruning at high depths.
     - **Static Null Move Pruning (RFP)**: Prunes nodes where the static evaluation is significantly above beta.
-    - **Null Move Pruning (NMP)**: Detects overwhelmingly strong positions to skip branches.
-    - **Late Move Reductions (LMR)** and **Late Move Pruning (LMP)**: Reduces or skips moves deemed unlikely to improve the score.
+    - **Refined LMR**: Precomputed logarithmic reduction table scaling with both depth and move index.
+    - **Futility Pruning**: Skips quiet moves at low depths when the position is unlikely to improve alpha.
 - **Extensions**:
     - **Singular Extensions**: Extends the search for "forced" moves that are significantly better than alternatives.
     - **Check Extensions**: Automatically extends depth when the king is in check.
+
 ### Move Ordering
 - **TT Move**: Prioritizes the best move found in previous search iterations.
 - **MVV-LVA**: Orders captures by Most Valuable Victim and Least Valuable Aggressor.
 - **Killer Moves & Countermove Heuristic**: Prioritizes quiet moves that have proven effective in similar branches.
-- **History Heuristic**: Rewards moves that have historically caused beta cutoffs.
+- **History Heuristic & Penalty**: Rewards moves that cause beta cutoffs and penalizes quiet moves that fail to improve alpha (Negative History).
 
 ### Evaluation (Hybrid Tapered HCE)
 - **Tapered Evaluation**: Dynamically interpolates between Midgame and Endgame scores.
-- **Refined King Safety**: Uses an attacking zone model and non-linear safety tables to detect threats.
-- **Advanced Pawn Evaluation**: Includes logic for Phalanx pawns, Backward pawns, and supported structures.
-- **Texel Tuning**: Automated evaluation tuning using a custom multi-threaded Texel Tuner.
+- **Refined King Safety**: Uses an attacking zone model and non-linear safety tables with piece-specific weighting.
+- **Advanced Pawn Evaluation**: Sophisticated logic for passed pawns, connected structures, and shields.
+- **SPSA & Texel Tuning**: Support for both Local Search and SPSA (Simultaneous Perturbation Stochastic Approximation) for parameter optimization.
 
 ## Getting Started
 
@@ -38,21 +41,21 @@ Axon is a high-performance, tournament-grade chess engine written in Go (Golang)
 ```bash
 git clone https://github.com/Skiddle-Labs/axon-engine.git
 cd axon-engine
-go build -o axon main.go
+go build -o axon.exe .
 ```
 
 ### Usage
 Axon is a command-line engine. Connect it to a UCI-compatible GUI for the best experience.
 
 ```bash
-./axon
+./axon.exe
 ```
 
 **Common UCI Commands:**
 - `uci`: Identify the engine and list available options.
-- `bench`: Runs a standardized performance test and reports NPS.
+- `bench`: Runs a standardized performance test and reports NPS and node counts.
 - `eval`: Displays a detailed breakdown of the static evaluation.
-- `position startpos moves e2e4`: Setup the board.
+- `position startpos moves e2e4`: Setup the board and play a move.
 
 ## Configuration (UCI Options)
 
@@ -61,38 +64,31 @@ Axon can be configured using the `setoption name <Name> value <Value>` command.
 - **Hash**: Transposition table size in MB (Default: 64, Max: 65536).
 - **Threads**: Number of search threads (Default: 1, Max: 128).
 - **Book File**: Path to a **Polyglot (.bin)** opening book.
-    - `setoption name Book File value C:\books\pro.bin`
-- **Book Best Move**: If true, the engine picks the move with highest weight from the book (Default: false).
-- **Book Depth**: Maximum ply count for book usage (Default: 255).
+- **Book Best Move**: If true, the engine picks the move with the highest weight from the book.
 - **Move Overhead**: Time buffer in ms to account for network/GUI lag (Default: 10).
 - **Slow Mover**: Percentage multiplier for time management (Default: 100).
 - **Clear Hash**: Manually wipe the Transposition Table.
 
 ## Development Tools
 
-Axon includes a suite of tools for engine development and evaluation tuning.
+Axon includes a robust toolchain for engine development and automated tuning.
 
 ### Datagen (`cmd/datagen`)
-Used to generate high-quality training data for the tuner through self-play.
-- Supports multi-threaded game generation.
-- Supports Polyglot opening books for position variety.
-- Outputs data in EPD format with game results.
+Generates high-quality EPD training data through multi-threaded self-play with opening book support.
 
 ### Tuner (`cmd/tuner`)
-A high-performance, multi-threaded Texel tuner used to optimize evaluation parameters.
-- Uses Mean Squared Error (MSE) minimization.
-- Automatically uses 80% of available CPU cores by default for background operation.
-- Provides real-time feedback during the optimization process.
-- Designed to handle millions of positions efficiently.
+A multi-threaded optimizer supporting both **Texel (Local Search)** and **SPSA** methods. It minimizes Mean Squared Error (MSE) between evaluation and game results.
+
+### Applier (`cmd/apply`)
+An automated tool to parse tuner results (`.txt`) and inject the optimized parameters directly into the Go source code (`internal/eval/params.go`).
 
 For detailed instructions, see the [Tuning Guide](TUNING_GUIDE.md).
 
 ## Project Structure
-- `/internal/engine`: Bitboards, Move Generation, Book Probing, and Zobrist Hashing.
-- `/internal/search`: PVS logic and Pruning Heuristics.
-- `/internal/eval`: Tapered evaluation, PSTs, and Positional Heuristics.
-- `/cmd/datagen`: Self-play tool for generating tuning data with opening book support.
-- `/cmd/tuner`: Automated evaluation tuning using the Texel Method.
+- `/internal/engine`: Core logic (Bitboards, MoveGen, Zobrist, Book Probing).
+- `/internal/search`: Modular search components (Negamax, Ordering, LMR, TT).
+- `/internal/eval`: Tapered evaluation, PSTs, and positional heuristics.
+- `/cmd`: Tuning, data generation, and parameter application utilities.
 
 ## License
 This project is licensed under the MIT License.
