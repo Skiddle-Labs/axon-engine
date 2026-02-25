@@ -32,6 +32,10 @@ type Protocol struct {
 	book             *engine.PolyglotBook
 	bookBestMove     bool
 	bookDepth        int
+
+	// Persistent Search Heuristics
+	historyTable [2][7][64]int
+	counterMoves [64][64]engine.Move
 }
 
 // NewProtocol creates a new Protocol handler.
@@ -209,6 +213,8 @@ func (p *Protocol) handleGo(parts []string) {
 	p.search = search.NewEngine(p.board)
 	p.search.Threads = p.threads
 	p.search.MultiPV = p.multiPV
+	p.search.HistoryTable = &p.historyTable
+	p.search.CounterMoves = &p.counterMoves
 	p.isPondering = false
 	p.pendingTimeLimit = 0
 
@@ -246,7 +252,7 @@ func (p *Protocol) handleGo(parts []string) {
 
 	wtime, btime := -1, -1
 	winc, binc := 0, 0
-	movestogo := 30
+	movestogo := 0
 	movetime := -1
 	nodesLimit := uint64(0)
 
@@ -305,10 +311,30 @@ func (p *Protocol) handleGo(parts []string) {
 
 	if movetime > 0 {
 		timeLimit = time.Duration(movetime) * time.Millisecond
-	} else if p.board.SideToMove == engine.White && wtime >= 0 {
-		timeLimit = time.Duration(wtime/movestogo+winc) * time.Millisecond
-	} else if p.board.SideToMove == engine.Black && btime >= 0 {
-		timeLimit = time.Duration(btime/movestogo+binc) * time.Millisecond
+	} else {
+		myTime := wtime
+		myInc := winc
+		if p.board.SideToMove == engine.Black {
+			myTime = btime
+			myInc = binc
+		}
+
+		if myTime >= 0 {
+			mtg := movestogo
+			if mtg <= 0 {
+				// Dynamic moves-to-go allocation: be more aggressive in midgame
+				// (higher piece count -> lower mtg) and more conservative in endgame
+				// (lower piece count -> higher mtg) to maintain a safer reserve.
+				occCount := p.board.Occupancy().Count()
+				mtg = 50 - occCount
+				if mtg < 20 {
+					mtg = 20
+				}
+			}
+
+			// Allocate time, leaving a safety buffer from the increment.
+			timeLimit = time.Duration(myTime/mtg)*time.Millisecond + time.Duration(myInc)*8/10*time.Millisecond
+		}
 	}
 
 	if timeLimit > 0 {
@@ -375,6 +401,15 @@ func (p *Protocol) handleGo(parts []string) {
 		} else {
 			p.send(fmt.Sprintf("bestmove %s", moveStr))
 		}
+
+		// Age persistent history table to favor more recent search results
+		for c := 0; c < 2; c++ {
+			for pt := 0; pt < 7; pt++ {
+				for sq := 0; sq < 64; sq++ {
+					p.historyTable[c][pt][sq] /= 2
+				}
+			}
+		}
 	}(p.search, depth)
 }
 
@@ -400,6 +435,10 @@ func (p *Protocol) handleUCINewGame() {
 	p.board.Clear()
 	p.board.SetFEN(startFEN)
 	search.GlobalTT.Clear()
+
+	// Reset persistent heuristics for a new game
+	p.historyTable = [2][7][64]int{}
+	p.counterMoves = [64][64]engine.Move{}
 }
 
 func (p *Protocol) handleSetOption(parts []string) {

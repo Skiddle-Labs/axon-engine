@@ -8,102 +8,84 @@ This guide explains how to use the Axon data generation and tuning pipeline to o
 
 The process consists of three main steps:
 1. **Data Generation**: Self-play games to create a dataset of FEN positions and game results.
-2. **Tuning**: Running the multi-threaded Texel Tuner on the dataset to find optimal weights.
-3. **Integration**: Updating the evaluation constants in the source code.
+2. **Tuning**: Running the high-performance tuner (using SPSA or Local Search) to find optimal weights.
+3. **Integration**: Automatically applying the new values to the engine's source code.
 
 ---
 
 ## 1. Data Generation (`cmd/datagen`)
 
-The `datagen` tool generates high-quality training data by playing games against itself using short time controls and slight randomness (to ensure variety).
+The `datagen` tool generates training data by playing games against itself.
 
-### Build the Tool
+### Usage
 ```bash
 go build -o datagen.exe ./cmd/datagen
+./datagen.exe -games 10000 -threads 8 -depth 8 -book opening_book.bin -out data.epd
 ```
 
 ### Parameters
-- `-out`: Path to the output EPD file (Default: `my_training_data.epd`).
 - `-games`: Number of games to play.
-- `-threads`: Number of concurrent games (Default: Number of CPUs).
-- `-depth`: Search depth for each move (Default: 8).
-- `-book`: (Optional) Path to a Polyglot `.bin` book to vary openings.
-- `-min-ply`: Start recording positions after this many plies (Default: 16).
-
-### Usage Example
-To generate 10,000 games using 8 threads and an opening book:
-```bash
-./datagen.exe -games 10000 -threads 8 -depth 6 -book opening_book.bin -out data_10k.epd
-```
-
-### Best Practices for Datagen
-- **Use a Book**: Always use an opening book. Without it, the engine will play the same few lines repeatedly, leading to "overfitted" data.
-- **Recording Phase**: Data is only recorded after the engine starts searching (post-book).
-- **Quality vs Quantity**: Depth 6-8 is usually sufficient. Higher depth provides better quality but takes significantly longer.
+- `-depth`: Search depth for each move (Recommended: 6-10).
+- `-book`: Path to a Polyglot `.bin` book (Critical for variety).
+- `-min-ply`: Start recording after this many plies (Default: 16).
 
 ---
 
 ## 2. Evaluation Tuning (`cmd/tuner`)
 
-The `tuner` reads the generated EPD file and uses a local search algorithm to find the evaluation constants that best predict the game outcomes. The Axon tuner is fully multi-threaded for high performance.
+The Axon tuner is a high-performance, multi-threaded tool that optimizes over 1,700 parameters simultaneously.
 
-### Build the Tool
+### High-Performance Features
+- **Feature Precomputation**: At startup, the tuner extracts all chess features (mobility, outposts, pawn structure) into a compact format. This allows the optimization loop to run thousands of times faster by avoiding redundant bitboard calculations.
+- **Multi-threading**: The Mean Squared Error (MSE) calculation is parallelized across all available CPU cores.
+
+### Build and Run
 ```bash
 go build -o tuner.exe ./cmd/tuner
+./tuner.exe -file data.epd -method spsa -iterations 5000 -save tuned_params.txt
 ```
 
-### Parameters
-- `-file`: Path to the training data file (EPD format).
-- `-iterations`: Number of iterations to run. Use `0` (default) to run until no further improvements are found.
-- `-threads`: Number of worker threads for MSE calculation (Default: Number of CPUs).
-- `-save`: Path to save the optimized parameters (Default: `tuned_params.txt`).
+### Optimization Methods
+- **SPSA (`-method spsa`)**: *Recommended.* Uses Simultaneous Perturbation Stochastic Approximation. It adjusts all parameters at once in every iteration. This is the only practical way to tune the 1,500+ PST values effectively.
+- **Local Search (`-method local`)**: Adjusts parameters one-by-one. Best for fine-tuning a small number of scalar values.
 
-### How it Works (Texel Method)
-The tuner calculates a "Sigmoid" value of the engine's static evaluation for every position in your dataset. It then compares this to the actual game result (1.0 for Win, 0.5 for Draw, 0.0 for Loss) and adjusts the parameters to minimize the **Mean Squared Error (MSE)**.
-
-### Real-time Feedback
-The tuner provides live updates as it optimizes. You will see output like:
-```text
-Iteration 1 | Current MSE: 0.0716250366
-  PawnMG: 82 -> 83 (MSE: 0.0716249850)
-  KnightEG: 281 -> 280 (MSE: 0.0716249210)
-```
-This allows you to monitor which parameters are being adjusted and how much they contribute to reducing the overall error.
-
-### Usage Example
-```bash
-./tuner.exe -file data_725k.epd -threads 12 -save my_tuned_eval.txt
-```
+### Tuning Parameters
+- `-iterations`: For SPSA, 5,000–50,000 is recommended for a large dataset.
+- `-threads`: Defaults to 80% of logical cores.
+- `-save`: The filename for the output results.
 
 ---
 
-## 3. Integration
+## 3. Automated Integration (`cmd/apply`)
 
-Once the tuner finishes, you must manually apply the new values to your engine:
+Axon provides a utility to automatically inject tuned parameters back into the engine. The evaluation parameters are stored in `internal/eval/params.go` to keep them isolated from the core logic.
 
-1. Open `internal/eval/eval.go`.
-2. Open the saved results file (e.g., `tuned_params.txt`).
-3. Locate the constants or arrays (like `MgPST`, `EgPST`, `PieceValues`, or `SafetyTable`) in the source code.
-4. Replace the old values with the optimized values from the file.
-4. Re-build the engine and re-run `bench` or play matches to verify the Elo gain.
+### How to Apply Results
+Once your tuner finishes and produces `tuned_params.txt`, run the applier utility:
+
+```bash
+go run cmd/apply/main.go tuned_params.txt
+```
+
+This script will:
+1. Parse the 1,700+ values from your results file.
+2. Automatically update the arrays (`MgPST`, `EgPST`, `SafetyTable`) and scalars (`PawnMG`, `RookMobilityEG`, etc.) in `internal/eval/params.go`.
+3. Preserve the structure and comments of the source file.
+
+### Rebuild the Engine
+After applying the parameters, recompile Axon to use the new weights:
+```bash
+go build -o axon.exe .
+```
 
 ---
 
 ## Tips for Success
 
-- **Dataset Size**: For meaningful results, aim for at least **500,000 to 1,000,000 positions**. 10,000 games typically yield ~300,000 usable positions.
-- **Thread Scaling**: The tuner scales almost linearly with CPU cores. If you have a 16-core CPU, the tuning process will be roughly 16x faster than a single-threaded run.
-- **Iteration**: Tuning is an iterative process. Once you update the constants, you can run `datagen` again with the "new" stronger engine to generate even better data for the next round of tuning.
-- **MSE Check**: If the Mean Squared Error is increasing, your dataset might be too noisy. Ensure your datagen depth is high enough (at least 6-8).
-
----
-
-## Dataset Format
-The tuner supports standard EPD files with results in several formats:
-- `fen [1.0]` (Self-play format)
-- `fen "1-0";` (Standard EPD)
-- `fen "1/2-1/2";`
-- `fen "0-1";`
+- **Dataset Size**: Aim for at least **500,000 positions** for a full PST tune.
+- **SPSA Iterations**: SPSA is stochastic. If parameters aren't moving enough, increase the `-iterations`.
+- **Validation**: After applying parameters, run the `bench` command to verify the engine still performs as expected: `./axon.exe bench`.
+- **Iterative Improvement**: Tuning is a cycle. Use your new, stronger engine to generate a "higher quality" dataset for the next round of tuning.
 
 ---
 *Happy Tuning!*

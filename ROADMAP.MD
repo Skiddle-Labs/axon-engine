@@ -8,12 +8,17 @@ This document tracks the planned improvements and current progress of the Axon c
 - [x] **Dynamic Time Management**: Implement evaluation-based and move-stability-based time allocation.
 - [x] **Singular Extensions**: Extend the search for moves that are significantly better than the second-best move.
 - [x] **Countermove Heuristic**: Improve move ordering by tracking successful responses to specific moves.
+- [x] **Aspiration Windows**: Reduce search nodes by using a narrow score window around the previous depth's evaluation.
+- [x] **LMR Refinement**: Refined Late Move Reductions with more aggressive pruning and depth-based scaling.
+- [ ] **Piece-Specific History**: Subdivide the history heuristic by piece type for improved move ordering.
 
 ## 2. Evaluation Improvements (Hybrid Strategy)
 - [x] **Texel Tuning**: Automated optimization of current HCE parameters (PST, material, mobility) using game results.
 - [x] **Data Generation**: Implement a self-play tool (`cmd/datagen`) to generate tuning data from engine-vs-engine games.
 - [x] **Enhanced Pawn Evaluation**: Add specific logic for pawn storms, space control, and sophisticated outposts.
 - [x] **King Safety Refinement**: Implement a more granular pawn shield and attacking zone evaluation.
+- [ ] **SPSA Tuning**: Implement Simultaneous Perturbation Stochastic Approximation for more robust parameter optimization.
+- [ ] **Enhanced Positional Evaluation**: Add logic for outposts, open files, and dynamic bishop-pair scaling.
 - [ ] **NNUE Implementation**: Implement a neural network evaluation as a final step while retaining HCE for speed and data generation.
 
 ## 3. Infrastructure & Features (Current Focus)

@@ -12,6 +12,7 @@ func TestSearch_MateIn1(t *testing.T) {
 	// Scholar's Mate position: Queen attacks F7 with Bishop support
 	b.SetFEN("r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
 
+	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
 	bestMove := searchEngine.Search(4)
 
@@ -29,6 +30,7 @@ func TestSearch_MateIn2(t *testing.T) {
 	// Black is in a position to be mated in 2: 1. Qe8+ Rxe8 2. Rxe8#
 	b.SetFEN("r5k1/5ppp/8/8/8/8/4QPPP/4R1K1 w - - 0 1")
 
+	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
 	bestMove := searchEngine.Search(4)
 
@@ -68,6 +70,7 @@ func TestSearch_Quiescence(t *testing.T) {
 	// If search stopped at depth 0 without quiescence, it might think it wins a pawn.
 	b.SetFEN("r1bqkbnr/pppp1ppp/2n5/4p3/3P4/5N2/PPP1PPPP/RNBQKB1R w KQkq - 0 1")
 
+	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
 	// Depth 1 search should use quiescence to see the full exchange at d4
 	bestMove := searchEngine.Search(1)
@@ -98,6 +101,7 @@ func TestSearch_NullMovePruning(t *testing.T) {
 	b := engine.NewBoard()
 	b.SetFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
 
+	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
 	// This is hard to test directly without instrumenting the code,
 	// but we can check if it runs correctly.
@@ -110,6 +114,7 @@ func TestSearch_Stalemate(t *testing.T) {
 	// Classic stalemate position
 	b.SetFEN("7k/5Q2/8/8/8/8/8/7K b - - 0 1")
 
+	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
 	move := searchEngine.Search(1)
 
@@ -159,6 +164,7 @@ func TestSearch_RFP(t *testing.T) {
 	// Winning position for white, static eval should be high
 	b.SetFEN("k7/8/8/8/8/4B3/4Q3/K7 w - - 0 1")
 
+	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
 	// We run search to ensure no panics and verify it reaches depth
 	searchEngine.Search(6)
@@ -172,6 +178,7 @@ func TestSearch_LMP(t *testing.T) {
 	b := engine.NewBoard()
 	b.SetFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
 
+	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
 	searchEngine.Search(6)
 }
@@ -184,6 +191,7 @@ func TestSearch_CounterMoves(t *testing.T) {
 	b := engine.NewBoard()
 	b.SetFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
 
+	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
 	searchEngine.Search(5)
 
@@ -211,6 +219,7 @@ func TestSearch_SingularExtensions(t *testing.T) {
 	// Forced move position
 	b.SetFEN("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2")
 
+	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
 	searchEngine.Search(9)
 }

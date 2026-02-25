@@ -26,6 +26,7 @@ var (
 	maxIters = flag.Int("iterations", 0, "Number of iterations (0 for until no improvement)")
 	threads  = flag.Int("threads", 0, "Number of threads to use for MSE calculation (defaults to 80% of CPUs)")
 	saveFile = flag.String("save", "tuned_params.txt", "Path to save the optimized parameters")
+	method   = flag.String("method", "local", "Optimization method (local or spsa)")
 )
 
 func main() {
@@ -38,7 +39,7 @@ func main() {
 
 	if filePath == "" {
 		fmt.Println("Axon Tuner - Texel Method")
-		fmt.Println("Usage: tuner -file <datafile.epd> [-iterations <n>] [-threads <t>] [-save <file>]")
+		fmt.Println("Usage: tuner -file <datafile.epd> [-iterations <n>] [-threads <t>] [-save <file>] [-method <local|spsa>]")
 		flag.PrintDefaults()
 		return
 	}
@@ -75,7 +76,14 @@ func main() {
 	fmt.Printf("Done. Best K: %.4f\n", bestK)
 
 	// Step 2: Run the optimization loop.
-	RunTuning(precomputed, bestK, *maxIters)
+	if strings.ToLower(*method) == "spsa" {
+		if *maxIters == 0 {
+			*maxIters = 1000
+		}
+		RunSPSA(precomputed, bestK, *maxIters)
+	} else {
+		RunTuning(precomputed, bestK, *maxIters)
+	}
 }
 
 func LoadEntries(path string) ([]Entry, error) {
@@ -332,6 +340,16 @@ func getTunableParams() ([]*int, []string) {
 	names = append(names, "WeakAttackerMG", "WeakAttackerEG")
 	params = append(params, &eval.HangingDivisorMG, &eval.HangingDivisorEG)
 	names = append(names, "HangingDivisorMG", "HangingDivisorEG")
+
+	// Positional
+	params = append(params, &eval.KnightOutpostMG, &eval.KnightOutpostEG)
+	names = append(names, "KnightOutpostMG", "KnightOutpostEG")
+	params = append(params, &eval.BishopOutpostMG, &eval.BishopOutpostEG)
+	names = append(names, "BishopOutpostMG", "BishopOutpostEG")
+	params = append(params, &eval.RookOpenFileMG, &eval.RookOpenFileEG)
+	names = append(names, "RookOpenFileMG", "RookOpenFileEG")
+	params = append(params, &eval.RookHalfOpenFileMG, &eval.RookHalfOpenFileEG)
+	names = append(names, "RookHalfOpenFileMG", "RookHalfOpenFileEG")
 
 	// PSTs
 	typeNames := []string{"None", "Pawn", "Knight", "Bishop", "Rook", "Queen", "King"}
