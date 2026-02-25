@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"math"
 	"os"
@@ -17,15 +18,27 @@ type Entry struct {
 	result float64 // 1.0 for Win, 0.5 for Draw, 0.0 for Loss
 }
 
+var (
+	dataFile = flag.String("file", "", "Path to the training data file (EPD format)")
+	maxIters = flag.Int("iterations", 0, "Number of iterations (0 for until no improvement)")
+)
+
 func main() {
-	if len(os.Args) < 2 {
+	flag.Parse()
+
+	filePath := *dataFile
+	if filePath == "" && len(flag.Args()) > 0 {
+		filePath = flag.Arg(0)
+	}
+
+	if filePath == "" {
 		fmt.Println("Axon Tuner - Texel Method")
-		fmt.Println("Usage: tuner <datafile.epd>")
-		fmt.Println("Data format: FEN [result]")
+		fmt.Println("Usage: tuner -file <datafile.epd> [-iterations <n>]")
+		flag.PrintDefaults()
 		return
 	}
 
-	entries, err := LoadEntries(os.Args[1])
+	entries, err := LoadEntries(filePath)
 	if err != nil {
 		fmt.Printf("Error loading entries: %v\n", err)
 		return
@@ -45,7 +58,7 @@ func main() {
 	fmt.Printf("Done. Best K: %.4f\n", bestK)
 
 	// Step 2: Run the optimization loop.
-	RunTuning(entries, bestK)
+	RunTuning(entries, bestK, *maxIters)
 }
 
 func LoadEntries(path string) ([]Entry, error) {
@@ -63,24 +76,44 @@ func LoadEntries(path string) ([]Entry, error) {
 			continue
 		}
 
-		// Expected format: <FEN> [<result>]
-		parts := strings.Split(line, "[")
-		if len(parts) < 2 {
-			continue
+		var fen string
+		var result float64
+		found := false
+
+		if strings.Contains(line, "[") {
+			// Format: <FEN> [1.0]
+			parts := strings.Split(line, "[")
+			fen = strings.TrimSpace(parts[0])
+			resStr := strings.Trim(parts[1], " ]")
+			switch resStr {
+			case "1.0":
+				result, found = 1.0, true
+			case "0.5":
+				result, found = 0.5, true
+			case "0.0":
+				result, found = 0.0, true
+			}
+		} else {
+			// Format: <FEN> ... "1-0"; or "1/2-1/2" or "0-1"
+			if strings.Contains(line, "\"1-0\"") {
+				result, found = 1.0, true
+			} else if strings.Contains(line, "\"1/2-1/2\"") {
+				result, found = 0.5, true
+			} else if strings.Contains(line, "\"0-1\"") {
+				result, found = 0.0, true
+			}
+
+			if found {
+				fen = line
+				if idx := strings.Index(line, "c9"); idx != -1 {
+					fen = strings.TrimSpace(line[:idx])
+				} else if idx := strings.Index(line, ";"); idx != -1 {
+					fen = strings.TrimSpace(line[:idx])
+				}
+			}
 		}
 
-		fen := strings.TrimSpace(parts[0])
-		resultPart := strings.Trim(parts[1], " ]")
-
-		var result float64
-		switch resultPart {
-		case "1.0":
-			result = 1.0
-		case "0.5":
-			result = 0.5
-		case "0.0":
-			result = 0.0
-		default:
+		if !found {
 			continue
 		}
 
@@ -134,7 +167,7 @@ func FindBestK(entries []Entry) float64 {
 	return bestK
 }
 
-func RunTuning(entries []Entry, k float64) {
+func RunTuning(entries []Entry, k float64, maxIterations int) {
 	params, names := getTunableParams()
 	bestMSE := CalculateMSE(entries, k)
 
@@ -143,6 +176,12 @@ func RunTuning(entries []Entry, k float64) {
 
 	iteration := 1
 	for {
+		if maxIterations > 0 && iteration > maxIterations {
+			fmt.Printf("\nReached maximum iterations: %d\n", maxIterations)
+			printParams(params, names)
+			break
+		}
+
 		improved := false
 		fmt.Printf("Iteration %d | Current MSE: %.10f\n", iteration, bestMSE)
 

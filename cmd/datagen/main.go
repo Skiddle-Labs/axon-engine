@@ -20,7 +20,7 @@ var (
 	searchDepth = flag.Int("depth", 8, "Search depth for each move")
 	randomMoves = flag.Int("random", 8, "Number of random moves at start")
 	bookFile    = flag.String("book", "", "Path to Polyglot book file (optional)")
-	outputFile  = flag.String("output", "data.epd", "Output file for training data")
+	outputFile  = flag.String("out", "data.epd", "Output file for training data")
 )
 
 type GameResult int
