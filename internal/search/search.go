@@ -40,6 +40,7 @@ type Engine struct {
 
 	Threads int
 	MultiPV int
+	Silent  bool
 
 	RootExcludedMoves []engine.Move
 
@@ -298,6 +299,9 @@ func (e *Engine) getPV(depth int) string {
 // printInfo outputs search information in UCI format.
 func (e *Engine) printInfo(depth, score int, bestMove engine.Move, multipv int) {
 	e.syncNodes()
+	if e.Silent {
+		return
+	}
 	duration := time.Since(e.StartTime).Seconds()
 	nps := uint64(0)
 	nodes := atomic.LoadUint64(e.Nodes)

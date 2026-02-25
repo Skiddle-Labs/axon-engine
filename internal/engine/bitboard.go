@@ -1,6 +1,10 @@
 package engine
 
-import "math/bits"
+import (
+	"math/bits"
+
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
+)
 
 // Bitboard represents a 64-bit unsigned integer where each bit
 // corresponds to a square on the chess board.
@@ -8,17 +12,17 @@ import "math/bits"
 type Bitboard uint64
 
 // Set sets the bit at the given square.
-func (b *Bitboard) Set(s Square) {
+func (b *Bitboard) Set(s types.Square) {
 	*b |= (1 << s)
 }
 
 // Clear clears the bit at the given square.
-func (b *Bitboard) Clear(s Square) {
+func (b *Bitboard) Clear(s types.Square) {
 	*b &= ^(1 << s)
 }
 
 // Test returns true if the bit at the given square is set.
-func (b Bitboard) Test(s Square) bool {
+func (b Bitboard) Test(s types.Square) bool {
 	return (b & (1 << s)) != 0
 }
 
@@ -34,20 +38,20 @@ func (b Bitboard) IsEmpty() bool {
 
 // PopLSB finds and clears the least significant bit that is set and returns its square.
 // It assumes the bitboard is not empty.
-func (b *Bitboard) PopLSB() Square {
+func (b *Bitboard) PopLSB() types.Square {
 	s := b.LSB()
 	*b &= *b - 1
 	return s
 }
 
 // LSB returns the square of the least significant bit that is set.
-func (b Bitboard) LSB() Square {
-	return Square(bits.TrailingZeros64(uint64(b)))
+func (b Bitboard) LSB() types.Square {
+	return types.Square(bits.TrailingZeros64(uint64(b)))
 }
 
 // MSB returns the square of the most significant bit that is set.
-func (b Bitboard) MSB() Square {
-	return Square(63 - bits.LeadingZeros64(uint64(b)))
+func (b Bitboard) MSB() types.Square {
+	return types.Square(63 - bits.LeadingZeros64(uint64(b)))
 }
 
 // Bitboard constants for common sets of squares.

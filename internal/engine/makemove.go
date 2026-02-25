@@ -1,5 +1,10 @@
 package engine
 
+import (
+	"github.com/Skiddle-Labs/axon-engine/internal/nnue"
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
+)
+
 var castlingMask = [64]CastlingRights{
 	13, 15, 15, 15, 12, 15, 15, 14,
 	15, 15, 15, 15, 15, 15, 15, 15,
@@ -9,6 +14,46 @@ var castlingMask = [64]CastlingRights{
 	15, 15, 15, 15, 15, 15, 15, 15,
 	15, 15, 15, 15, 15, 15, 15, 15,
 	7, 15, 15, 15, 3, 15, 15, 11,
+}
+
+func (b *Board) addPiece(sq types.Square, p types.Piece) {
+	c := p.Color()
+	pt := p.Type()
+	b.Pieces[c][pt].Set(sq)
+	b.Colors[c].Set(sq)
+
+	if nnue.CurrentNetwork == nil {
+		return
+	}
+
+	// Perspectives: White (W) and Black (B)
+	idxW := nnue.GetFeatureIndex(p, sq)
+	idxB := nnue.GetFeatureIndex(p.FlippedColor(), sq.Flipped())
+
+	for i := 0; i < types.L1Size; i++ {
+		b.Accumulators[0][i] += nnue.CurrentNetwork.FeatureWeights[idxW][i]
+		b.Accumulators[1][i] += nnue.CurrentNetwork.FeatureWeights[idxB][i]
+	}
+}
+
+func (b *Board) removePiece(sq types.Square, p types.Piece) {
+	c := p.Color()
+	pt := p.Type()
+	b.Pieces[c][pt].Clear(sq)
+	b.Colors[c].Clear(sq)
+
+	if nnue.CurrentNetwork == nil {
+		return
+	}
+
+	// Perspectives: White (W) and Black (B)
+	idxW := nnue.GetFeatureIndex(p, sq)
+	idxB := nnue.GetFeatureIndex(p.FlippedColor(), sq.Flipped())
+
+	for i := 0; i < types.L1Size; i++ {
+		b.Accumulators[0][i] -= nnue.CurrentNetwork.FeatureWeights[idxW][i]
+		b.Accumulators[1][i] -= nnue.CurrentNetwork.FeatureWeights[idxB][i]
+	}
 }
 
 // MakeMove updates the board state with the given move.
@@ -28,6 +73,7 @@ func (b *Board) MakeMove(m Move) bool {
 		HalfMoveClock: b.HalfMoveClock,
 		Hash:          b.Hash,
 		PawnHash:      b.PawnHash,
+		Accumulators:  b.Accumulators,
 	}
 
 	movingPiece := b.PieceAt(from)
@@ -35,25 +81,24 @@ func (b *Board) MakeMove(m Move) bool {
 
 	// Update hash for moving piece departure
 	b.Hash ^= PieceKeys[movingPiece][from]
-	if movingType == Pawn {
+	if movingType == types.Pawn {
 		b.PawnHash ^= PieceKeys[movingPiece][from]
 	}
 
 	// Remove current En Passant and Castling from hash
-	if b.EnPassant != NoSquare {
+	if b.EnPassant != types.NoSquare {
 		b.Hash ^= EnPassantKeys[b.EnPassant.File()]
 	}
-	b.Hash ^= CastlingKeys[b.Castling]
 
 	// Clear En Passant square for the new state
-	b.EnPassant = NoSquare
+	b.EnPassant = types.NoSquare
 	b.HalfMoveClock++
 
 	// 2. Handle captures
 	if flags&CaptureFlag != 0 {
 		captureSq := to
 		if flags == EnPassantFlag {
-			if us == White {
+			if us == types.White {
 				captureSq = to - 8
 			} else {
 				captureSq = to + 8
@@ -64,85 +109,73 @@ func (b *Board) MakeMove(m Move) bool {
 		b.History[b.Ply].CapturedPiece = capturedPiece
 
 		// Remove the captured piece from board and hash
-		b.Pieces[them][capturedPiece.Type()].Clear(captureSq)
-		b.Colors[them].Clear(captureSq)
+		b.removePiece(captureSq, capturedPiece)
 		b.Hash ^= PieceKeys[capturedPiece][captureSq]
-		if capturedPiece.Type() == Pawn {
+		if capturedPiece.Type() == types.Pawn {
 			b.PawnHash ^= PieceKeys[capturedPiece][captureSq]
 		}
 		b.HalfMoveClock = 0
 	} else {
-		b.History[b.Ply].CapturedPiece = NoPiece
+		b.History[b.Ply].CapturedPiece = types.NoPiece
 	}
 
 	// 3. Move the piece
-	b.Pieces[us][movingType].Clear(from)
-	b.Colors[us].Clear(from)
+	b.removePiece(from, movingPiece)
 
 	if flags&0x8000 != 0 { // Promotion
-		var promoType PieceType
+		var promoType types.PieceType
 		switch flags & 0xB000 {
 		case PromoQueen:
-			promoType = Queen
+			promoType = types.Queen
 		case PromoRook:
-			promoType = Rook
+			promoType = types.Rook
 		case PromoBishop:
-			promoType = Bishop
+			promoType = types.Bishop
 		case PromoKnight:
-			promoType = Knight
+			promoType = types.Knight
 		}
 		promoPiece := makePiece(us, promoType)
-		b.Pieces[us][promoType].Set(to)
-		b.Colors[us].Set(to)
+		b.addPiece(to, promoPiece)
 		b.Hash ^= PieceKeys[promoPiece][to]
 	} else {
-		b.Pieces[us][movingType].Set(to)
-		b.Colors[us].Set(to)
+		b.addPiece(to, movingPiece)
 		b.Hash ^= PieceKeys[movingPiece][to]
-		if movingType == Pawn {
+		if movingType == types.Pawn {
 			b.PawnHash ^= PieceKeys[movingPiece][to]
 		}
 	}
 
 	// 4. Handle special move rules
-	if movingType == Pawn {
+	if movingType == types.Pawn {
 		b.HalfMoveClock = 0
 		if flags == DoublePawnPush {
-			if us == White {
+			if us == types.White {
 				b.EnPassant = from + 8
 			} else {
 				b.EnPassant = from - 8
 			}
 			b.Hash ^= EnPassantKeys[b.EnPassant.File()]
 		}
-	} else if movingType == King {
+	} else if movingType == types.King {
 		if flags == KingsideCast {
-			if us == White {
-				b.Pieces[White][Rook].Clear(H1)
-				b.Colors[White].Clear(H1)
-				b.Pieces[White][Rook].Set(F1)
-				b.Colors[White].Set(F1)
-				b.Hash ^= PieceKeys[WhiteRook][H1] ^ PieceKeys[WhiteRook][F1]
+			if us == types.White {
+				b.removePiece(types.H1, types.WhiteRook)
+				b.addPiece(types.F1, types.WhiteRook)
+				b.Hash ^= PieceKeys[types.WhiteRook][types.H1] ^ PieceKeys[types.WhiteRook][types.F1]
 			} else {
-				b.Pieces[Black][Rook].Clear(H8)
-				b.Colors[Black].Clear(H8)
-				b.Pieces[Black][Rook].Set(F8)
-				b.Colors[Black].Set(F8)
-				b.Hash ^= PieceKeys[BlackRook][H8] ^ PieceKeys[BlackRook][F8]
+				b.removePiece(types.H8, types.BlackRook)
+				b.addPiece(types.F8, types.BlackRook)
+				b.Hash ^= PieceKeys[types.BlackRook][types.H8] ^ PieceKeys[types.BlackRook][types.F8]
 			}
 		} else if flags == QueensideCast {
-			if us == White {
-				b.Pieces[White][Rook].Clear(A1)
-				b.Colors[White].Clear(A1)
-				b.Pieces[White][Rook].Set(D1)
-				b.Colors[White].Set(D1)
-				b.Hash ^= PieceKeys[WhiteRook][A1] ^ PieceKeys[WhiteRook][D1]
+			if us == types.White {
+				b.removePiece(types.A1, types.WhiteRook)
+				b.addPiece(types.D1, types.WhiteRook)
+				b.Hash ^= PieceKeys[types.WhiteRook][types.A1] ^ PieceKeys[types.WhiteRook][types.D1]
 			} else {
-				b.Pieces[Black][Rook].Clear(A8)
-				b.Colors[Black].Clear(A8)
-				b.Pieces[Black][Rook].Set(D8)
-				b.Colors[Black].Set(D8)
-				b.Hash ^= PieceKeys[BlackRook][A8] ^ PieceKeys[BlackRook][D8]
+				b.removePiece(types.A8, types.BlackRook)
+				b.addPiece(types.D8, types.BlackRook)
+				b.Hash ^= PieceKeys[types.BlackRook][types.A8] ^ PieceKeys[types.BlackRook][types.D8]
 			}
 		}
 	}
@@ -155,13 +188,13 @@ func (b *Board) MakeMove(m Move) bool {
 	// 6. Update side to move and final bits
 	b.SideToMove = them
 	b.Hash ^= SideKey
-	if us == Black {
+	if us == types.Black {
 		b.FullMoveNumber++
 	}
 	b.Ply++
 
 	// 7. Legality check: can't leave king in check
-	kingSq := b.Pieces[us][King].LSB()
+	kingSq := b.Pieces[us][types.King].LSB()
 	if b.IsSquareAttacked(kingSq, them) {
 		b.UnmakeMove(m)
 		return false
@@ -174,7 +207,6 @@ func (b *Board) MakeMove(m Move) bool {
 func (b *Board) UnmakeMove(m Move) {
 	b.Ply--
 	us := b.SideToMove ^ 1 // Side that made the move
-	them := b.SideToMove
 	from := m.From()
 	to := m.To()
 	flags := m.Flags()
@@ -187,66 +219,56 @@ func (b *Board) UnmakeMove(m Move) {
 	b.HalfMoveClock = state.HalfMoveClock
 	b.Hash = state.Hash
 	b.PawnHash = state.PawnHash
+	b.Accumulators = state.Accumulators
 
 	// 1. Move piece back
 	movingPiece := b.PieceAt(to)
-	movingType := movingPiece.Type()
-	b.Pieces[us][movingType].Clear(to)
-	b.Colors[us].Clear(to)
+	b.removePiece(to, movingPiece)
 
-	originalType := movingType
+	originalType := movingPiece.Type()
 	if flags&0x8000 != 0 {
-		originalType = Pawn
+		originalType = types.Pawn
 	}
-	b.Pieces[us][originalType].Set(from)
-	b.Colors[us].Set(from)
+	originalPiece := makePiece(us, originalType)
+	b.addPiece(from, originalPiece)
 
 	// 2. Restore captured piece
 	if flags&CaptureFlag != 0 {
 		captureSq := to
 		if flags == EnPassantFlag {
-			if us == White {
+			if us == types.White {
 				captureSq = to - 8
 			} else {
 				captureSq = to + 8
 			}
 		}
 		capturedPiece := state.CapturedPiece
-		b.Pieces[them][capturedPiece.Type()].Set(captureSq)
-		b.Colors[them].Set(captureSq)
+		b.addPiece(captureSq, capturedPiece)
 	}
 
 	// 3. Restore castling rooks
-	if originalType == King {
+	if originalType == types.King {
 		if flags == KingsideCast {
-			if us == White {
-				b.Pieces[White][Rook].Clear(F1)
-				b.Colors[White].Clear(F1)
-				b.Pieces[White][Rook].Set(H1)
-				b.Colors[White].Set(H1)
+			if us == types.White {
+				b.removePiece(types.F1, types.WhiteRook)
+				b.addPiece(types.H1, types.WhiteRook)
 			} else {
-				b.Pieces[Black][Rook].Clear(F8)
-				b.Colors[Black].Clear(F8)
-				b.Pieces[Black][Rook].Set(H8)
-				b.Colors[Black].Set(H8)
+				b.removePiece(types.F8, types.BlackRook)
+				b.addPiece(types.H8, types.BlackRook)
 			}
 		} else if flags == QueensideCast {
-			if us == White {
-				b.Pieces[White][Rook].Clear(D1)
-				b.Colors[White].Clear(D1)
-				b.Pieces[White][Rook].Set(A1)
-				b.Colors[White].Set(A1)
+			if us == types.White {
+				b.removePiece(types.D1, types.WhiteRook)
+				b.addPiece(types.A1, types.WhiteRook)
 			} else {
-				b.Pieces[Black][Rook].Clear(D8)
-				b.Colors[Black].Clear(D8)
-				b.Pieces[Black][Rook].Set(A8)
-				b.Colors[Black].Set(A8)
+				b.removePiece(types.D8, types.BlackRook)
+				b.addPiece(types.A8, types.BlackRook)
 			}
 		}
 	}
 
 	// 4. Reset counters
-	if us == Black {
+	if us == types.Black {
 		b.FullMoveNumber--
 	}
 	b.SideToMove = us
@@ -261,23 +283,57 @@ func (b *Board) MakeNullMove() {
 		HalfMoveClock: b.HalfMoveClock,
 		Hash:          b.Hash,
 		PawnHash:      b.PawnHash,
-		CapturedPiece: NoPiece,
+		CapturedPiece: types.NoPiece,
+		Accumulators:  b.Accumulators,
 	}
 
-	if b.EnPassant != NoSquare {
+	if b.EnPassant != types.NoSquare {
 		b.Hash ^= EnPassantKeys[b.EnPassant.File()]
 	}
 
-	b.EnPassant = NoSquare
+	b.EnPassant = types.NoSquare
 	b.HalfMoveClock++
 	b.SideToMove ^= 1
 	b.Hash ^= SideKey
 
-	if b.SideToMove == White { // Side that moved was Black
+	if b.SideToMove == types.White { // Side that moved was Black
 		b.FullMoveNumber++
 	}
 
 	b.Ply++
+}
+
+// RefreshAccumulators fully recalculates the NNUE accumulators from the current board state.
+func (b *Board) RefreshAccumulators() {
+	b.Accumulators = [2]types.Accumulator{}
+	if nnue.CurrentNetwork == nil {
+		return
+	}
+
+	for i := 0; i < types.L1Size; i++ {
+		b.Accumulators[0][i] = nnue.CurrentNetwork.FeatureBiases[i]
+		b.Accumulators[1][i] = nnue.CurrentNetwork.FeatureBiases[i]
+	}
+
+	for c := types.White; c <= types.Black; c++ {
+		for pt := types.Pawn; pt <= types.King; pt++ {
+			pieces := b.Pieces[c][pt]
+			for pieces != 0 {
+				sq := pieces.PopLSB()
+
+				p := makePiece(c, pt)
+
+				// Perspectives: White (W) and Black (B)
+				idxW := nnue.GetFeatureIndex(p, sq)
+				idxB := nnue.GetFeatureIndex(p.FlippedColor(), sq.Flipped())
+
+				for i := 0; i < types.L1Size; i++ {
+					b.Accumulators[0][i] += nnue.CurrentNetwork.FeatureWeights[idxW][i]
+					b.Accumulators[1][i] += nnue.CurrentNetwork.FeatureWeights[idxB][i]
+				}
+			}
+		}
+	}
 }
 
 // UnmakeNullMove reverts a null move.
@@ -290,7 +346,7 @@ func (b *Board) UnmakeNullMove() {
 	b.Hash = state.Hash
 	b.PawnHash = state.PawnHash
 
-	if b.SideToMove == White { // Side that moved was Black
+	if b.SideToMove == types.White { // Side that moved was Black
 		b.FullMoveNumber--
 	}
 	b.SideToMove ^= 1

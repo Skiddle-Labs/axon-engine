@@ -2,32 +2,33 @@ package eval
 
 import (
 	"github.com/Skiddle-Labs/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
 
 // evaluateKingSafety calculates the safety of the king, including pawn shields,
 // enemy attacking zones, and pawn storms.
-func evaluateKingSafety(b *engine.Board, c engine.Color) (int, int) {
+func evaluateKingSafety(b *engine.Board, c types.Color) (int, int) {
 	mg, eg := 0, 0
-	kingBB := b.Pieces[c][engine.King]
+	kingBB := b.Pieces[c][types.King]
 	if kingBB.IsEmpty() {
 		return 0, 0
 	}
 	kingSq := kingBB.LSB()
-	pawns := b.Pieces[c][engine.Pawn]
+	pawns := b.Pieces[c][types.Pawn]
 	them := c ^ 1
-	enemyPawns := b.Pieces[them][engine.Pawn]
+	enemyPawns := b.Pieces[them][types.Pawn]
 
 	// 1. Pawn Shield
 	// Rewards pawns directly in front of the king.
 	rank := kingSq.Rank()
 	file := kingSq.File()
-	if c == engine.White {
+	if c == types.White {
 		if rank < 7 {
 			for fIdx := file - 1; fIdx <= file+1; fIdx++ {
 				if fIdx >= 0 && fIdx <= 7 {
-					if pawns.Test(engine.NewSquare(fIdx, rank+1)) {
+					if pawns.Test(types.NewSquare(fIdx, rank+1)) {
 						mg += KingShieldClose
-					} else if rank < 6 && pawns.Test(engine.NewSquare(fIdx, rank+2)) {
+					} else if rank < 6 && pawns.Test(types.NewSquare(fIdx, rank+2)) {
 						mg += KingShieldFar
 					}
 				}
@@ -37,9 +38,9 @@ func evaluateKingSafety(b *engine.Board, c engine.Color) (int, int) {
 		if rank > 0 {
 			for fIdx := file - 1; fIdx <= file+1; fIdx++ {
 				if fIdx >= 0 && fIdx <= 7 {
-					if pawns.Test(engine.NewSquare(fIdx, rank-1)) {
+					if pawns.Test(types.NewSquare(fIdx, rank-1)) {
 						mg += KingShieldClose
-					} else if rank > 1 && pawns.Test(engine.NewSquare(fIdx, rank-2)) {
+					} else if rank > 1 && pawns.Test(types.NewSquare(fIdx, rank-2)) {
 						mg += KingShieldFar
 					}
 				}
@@ -54,19 +55,19 @@ func evaluateKingSafety(b *engine.Board, c engine.Color) (int, int) {
 
 	attackerCount, attackerWeight := 0, 0
 
-	for pt := engine.Knight; pt <= engine.Queen; pt++ {
+	for pt := types.Knight; pt <= types.Queen; pt++ {
 		pieces := b.Pieces[them][pt]
 		for pieces != 0 {
 			sq := pieces.PopLSB()
 			var attacks engine.Bitboard
 			switch pt {
-			case engine.Knight:
+			case types.Knight:
 				attacks = engine.KnightAttacks[sq]
-			case engine.Bishop:
+			case types.Bishop:
 				attacks = engine.GetBishopAttacks(sq, occ)
-			case engine.Rook:
+			case types.Rook:
 				attacks = engine.GetRookAttacks(sq, occ)
-			case engine.Queen:
+			case types.Queen:
 				attacks = engine.GetQueenAttacks(sq, occ)
 			}
 			if !(attacks & zone).IsEmpty() {
@@ -92,9 +93,9 @@ func evaluateKingSafety(b *engine.Board, c engine.Color) (int, int) {
 		}
 		pawnsOnFile := enemyPawns & (engine.FileA << f)
 		if pawnsOnFile != 0 {
-			var pSq engine.Square
+			var pSq types.Square
 			var dist int
-			if c == engine.White {
+			if c == types.White {
 				pSq = pawnsOnFile.MSB() // Highest rank pawn
 				dist = 7 - pSq.Rank()
 			} else {

@@ -1,6 +1,10 @@
 package engine
 
-import "math/rand"
+import (
+	"math/rand"
+
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
+)
 
 // Zobrist random keys
 var (
@@ -39,15 +43,15 @@ func (b *Board) ComputeHash() uint64 {
 
 	// XOR pieces on squares
 	for s := 0; s < 64; s++ {
-		sq := Square(s)
+		sq := types.Square(s)
 		p := b.PieceAt(sq)
-		if p != NoPiece {
+		if p != types.NoPiece {
 			h ^= PieceKeys[p][s]
 		}
 	}
 
 	// XOR side to move (usually only XORed if it's black's turn)
-	if b.SideToMove == Black {
+	if b.SideToMove == types.Black {
 		h ^= SideKey
 	}
 
@@ -55,7 +59,7 @@ func (b *Board) ComputeHash() uint64 {
 	h ^= CastlingKeys[b.Castling]
 
 	// XOR en passant file
-	if b.EnPassant != NoSquare {
+	if b.EnPassant != types.NoSquare {
 		h ^= EnPassantKeys[b.EnPassant.File()]
 	}
 
@@ -66,16 +70,16 @@ func (b *Board) ComputeHash() uint64 {
 func (b *Board) ComputePawnHash() uint64 {
 	var h uint64
 
-	whitePawns := b.Pieces[White][Pawn]
+	whitePawns := b.Pieces[types.White][types.Pawn]
 	for whitePawns != 0 {
 		sq := whitePawns.PopLSB()
-		h ^= PieceKeys[WhitePawn][sq]
+		h ^= PieceKeys[types.WhitePawn][sq]
 	}
 
-	blackPawns := b.Pieces[Black][Pawn]
+	blackPawns := b.Pieces[types.Black][types.Pawn]
 	for blackPawns != 0 {
 		sq := blackPawns.PopLSB()
-		h ^= PieceKeys[BlackPawn][sq]
+		h ^= PieceKeys[types.BlackPawn][sq]
 	}
 
 	return h

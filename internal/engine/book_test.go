@@ -2,6 +2,8 @@ package engine
 
 import (
 	"testing"
+
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
 
 // TestPolyglotHash_StartPos verifies that the Polyglot hash for the starting position
@@ -115,7 +117,7 @@ func TestBook_ParseMove(t *testing.T) {
 
 	move := book.parsePolyglotMove(b, raw)
 
-	if move.From() != E2 || move.To() != E4 {
+	if move.From() != types.E2 || move.To() != types.E4 {
 		t.Errorf("Expected e2e4, got %s", move.String())
 	}
 

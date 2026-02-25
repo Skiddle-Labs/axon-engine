@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
 
 type CastlingRights uint8
@@ -11,12 +13,13 @@ type CastlingRights uint8
 // State represents the irreversible state of the board, used for unmaking moves.
 type State struct {
 	Move          Move
-	EnPassant     Square
+	EnPassant     types.Square
 	Castling      CastlingRights
 	HalfMoveClock uint8
-	CapturedPiece Piece
+	CapturedPiece types.Piece
 	Hash          uint64
 	PawnHash      uint64
+	Accumulators  [2]types.Accumulator
 }
 
 // Board represents the state of a chess game.
@@ -29,11 +32,14 @@ type Board struct {
 	Colors [2]Bitboard
 
 	// Game state variables
-	SideToMove Color
-	EnPassant  Square
+	SideToMove types.Color
+	EnPassant  types.Square
 	Castling   CastlingRights
 	Hash       uint64
 	PawnHash   uint64
+
+	// NNUE Accumulators (for White and Black perspectives)
+	Accumulators [2]types.Accumulator
 
 	// History and counters
 	HalfMoveClock  uint8
@@ -55,37 +61,37 @@ const (
 // NewBoard creates a new Board with an empty state.
 func NewBoard() *Board {
 	return &Board{
-		SideToMove: White,
-		EnPassant:  NoSquare,
+		SideToMove: types.White,
+		EnPassant:  types.NoSquare,
 	}
 }
 
 // Occupancy returns a bitboard of all pieces on the board.
 func (b *Board) Occupancy() Bitboard {
-	return b.Colors[White] | b.Colors[Black]
+	return b.Colors[types.White] | b.Colors[types.Black]
 }
 
 // HasMajorPieces returns true if the given color has non-pawn/non-king pieces.
-func (b *Board) HasMajorPieces(c Color) bool {
-	return b.Pieces[c][Knight] != 0 ||
-		b.Pieces[c][Bishop] != 0 ||
-		b.Pieces[c][Rook] != 0 ||
-		b.Pieces[c][Queen] != 0
+func (b *Board) HasMajorPieces(c types.Color) bool {
+	return b.Pieces[c][types.Knight] != 0 ||
+		b.Pieces[c][types.Bishop] != 0 ||
+		b.Pieces[c][types.Rook] != 0 ||
+		b.Pieces[c][types.Queen] != 0
 }
 
 // PieceAt returns the piece at the given square.
-func (b *Board) PieceAt(s Square) Piece {
-	for c := White; c <= Black; c++ {
+func (b *Board) PieceAt(s types.Square) types.Piece {
+	for c := types.White; c <= types.Black; c++ {
 		if !b.Colors[c].Test(s) {
 			continue
 		}
-		for pt := Pawn; pt <= King; pt++ {
+		for pt := types.Pawn; pt <= types.King; pt++ {
 			if b.Pieces[c][pt].Test(s) {
 				return makePiece(c, pt)
 			}
 		}
 	}
-	return NoPiece
+	return types.NoPiece
 }
 
 func (b *Board) String() string {
@@ -94,32 +100,32 @@ func (b *Board) String() string {
 	for r := 7; r >= 0; r-- {
 		sb.WriteString(fmt.Sprintf("%d |", r+1))
 		for f := 0; f < 8; f++ {
-			p := b.PieceAt(NewSquare(f, r))
+			p := b.PieceAt(types.NewSquare(f, r))
 			char := "."
 			switch p {
-			case WhitePawn:
+			case types.WhitePawn:
 				char = "P"
-			case WhiteKnight:
+			case types.WhiteKnight:
 				char = "N"
-			case WhiteBishop:
+			case types.WhiteBishop:
 				char = "B"
-			case WhiteRook:
+			case types.WhiteRook:
 				char = "R"
-			case WhiteQueen:
+			case types.WhiteQueen:
 				char = "Q"
-			case WhiteKing:
+			case types.WhiteKing:
 				char = "K"
-			case BlackPawn:
+			case types.BlackPawn:
 				char = "p"
-			case BlackKnight:
+			case types.BlackKnight:
 				char = "n"
-			case BlackBishop:
+			case types.BlackBishop:
 				char = "b"
-			case BlackRook:
+			case types.BlackRook:
 				char = "r"
-			case BlackQueen:
+			case types.BlackQueen:
 				char = "q"
-			case BlackKing:
+			case types.BlackKing:
 				char = "k"
 			}
 			sb.WriteString(fmt.Sprintf(" %s |", char))
@@ -150,10 +156,10 @@ func (b *Board) SetFEN(fen string) error {
 			file += int(char - '0')
 		default:
 			piece, color, pt := pieceFromChar(char)
-			if piece == NoPiece {
+			if piece == types.NoPiece {
 				return fmt.Errorf("invalid piece in FEN: %c", char)
 			}
-			sq := NewSquare(file, rank)
+			sq := types.NewSquare(file, rank)
 			b.Pieces[color][pt].Set(sq)
 			b.Colors[color].Set(sq)
 			file++
@@ -162,9 +168,9 @@ func (b *Board) SetFEN(fen string) error {
 
 	// 2. Side to move
 	if fields[1] == "w" {
-		b.SideToMove = White
+		b.SideToMove = types.White
 	} else {
-		b.SideToMove = Black
+		b.SideToMove = types.Black
 	}
 
 	// 3. Castling rights
@@ -186,12 +192,12 @@ func (b *Board) SetFEN(fen string) error {
 
 	// 4. En passant square
 	if fields[3] == "-" {
-		b.EnPassant = NoSquare
+		b.EnPassant = types.NoSquare
 	} else {
 		if len(fields[3]) == 2 {
 			f := int(fields[3][0] - 'a')
 			r := int(fields[3][1] - '1')
-			b.EnPassant = NewSquare(f, r)
+			b.EnPassant = types.NewSquare(f, r)
 		}
 	}
 
@@ -211,6 +217,7 @@ func (b *Board) SetFEN(fen string) error {
 
 	b.Hash = b.ComputeHash()
 	b.PawnHash = b.ComputePawnHash()
+	b.RefreshAccumulators()
 
 	return nil
 }
@@ -223,8 +230,8 @@ func (b *Board) FEN() string {
 	for r := 7; r >= 0; r-- {
 		empty := 0
 		for f := 0; f < 8; f++ {
-			p := b.PieceAt(NewSquare(f, r))
-			if p == NoPiece {
+			p := b.PieceAt(types.NewSquare(f, r))
+			if p == types.NoPiece {
 				empty++
 			} else {
 				if empty > 0 {
@@ -233,29 +240,29 @@ func (b *Board) FEN() string {
 				}
 				char := ""
 				switch p {
-				case WhitePawn:
+				case types.WhitePawn:
 					char = "P"
-				case WhiteKnight:
+				case types.WhiteKnight:
 					char = "N"
-				case WhiteBishop:
+				case types.WhiteBishop:
 					char = "B"
-				case WhiteRook:
+				case types.WhiteRook:
 					char = "R"
-				case WhiteQueen:
+				case types.WhiteQueen:
 					char = "Q"
-				case WhiteKing:
+				case types.WhiteKing:
 					char = "K"
-				case BlackPawn:
+				case types.BlackPawn:
 					char = "p"
-				case BlackKnight:
+				case types.BlackKnight:
 					char = "n"
-				case BlackBishop:
+				case types.BlackBishop:
 					char = "b"
-				case BlackRook:
+				case types.BlackRook:
 					char = "r"
-				case BlackQueen:
+				case types.BlackQueen:
 					char = "q"
-				case BlackKing:
+				case types.BlackKing:
 					char = "k"
 				}
 				sb.WriteString(char)
@@ -270,7 +277,7 @@ func (b *Board) FEN() string {
 	}
 
 	// 2. Side to move
-	if b.SideToMove == White {
+	if b.SideToMove == types.White {
 		sb.WriteString(" w ")
 	} else {
 		sb.WriteString(" b ")
@@ -296,7 +303,7 @@ func (b *Board) FEN() string {
 
 	// 4. En passant square
 	sb.WriteString(" ")
-	if b.EnPassant == NoSquare {
+	if b.EnPassant == types.NoSquare {
 		sb.WriteString("-")
 	} else {
 		sb.WriteString(b.EnPassant.String())
@@ -317,53 +324,54 @@ func (b *Board) FEN() string {
 func (b *Board) Clear() {
 	b.Pieces = [2][7]Bitboard{}
 	b.Colors = [2]Bitboard{}
-	b.SideToMove = White
-	b.EnPassant = NoSquare
+	b.SideToMove = types.White
+	b.EnPassant = types.NoSquare
 	b.Castling = 0
 	b.HalfMoveClock = 0
 	b.FullMoveNumber = 1
 	b.Ply = 0
 	b.Hash = 0
 	b.PawnHash = 0
+	b.Accumulators = [2]types.Accumulator{}
 }
 
-func pieceFromChar(c rune) (Piece, Color, PieceType) {
+func pieceFromChar(c rune) (types.Piece, types.Color, types.PieceType) {
 	switch c {
 	case 'P':
-		return WhitePawn, White, Pawn
+		return types.WhitePawn, types.White, types.Pawn
 	case 'N':
-		return WhiteKnight, White, Knight
+		return types.WhiteKnight, types.White, types.Knight
 	case 'B':
-		return WhiteBishop, White, Bishop
+		return types.WhiteBishop, types.White, types.Bishop
 	case 'R':
-		return WhiteRook, White, Rook
+		return types.WhiteRook, types.White, types.Rook
 	case 'Q':
-		return WhiteQueen, White, Queen
+		return types.WhiteQueen, types.White, types.Queen
 	case 'K':
-		return WhiteKing, White, King
+		return types.WhiteKing, types.White, types.King
 	case 'p':
-		return BlackPawn, Black, Pawn
+		return types.BlackPawn, types.Black, types.Pawn
 	case 'n':
-		return BlackKnight, Black, Knight
+		return types.BlackKnight, types.Black, types.Knight
 	case 'b':
-		return BlackBishop, Black, Bishop
+		return types.BlackBishop, types.Black, types.Bishop
 	case 'r':
-		return BlackRook, Black, Rook
+		return types.BlackRook, types.Black, types.Rook
 	case 'q':
-		return BlackQueen, Black, Queen
+		return types.BlackQueen, types.Black, types.Queen
 	case 'k':
-		return BlackKing, Black, King
+		return types.BlackKing, types.Black, types.King
 	}
-	return NoPiece, NoColor, None
+	return types.NoPiece, types.NoColor, types.None
 }
 
 // Helper to combine Color and PieceType into a Piece (internal use)
-func makePiece(c Color, pt PieceType) Piece {
-	if pt == None {
-		return NoPiece
+func makePiece(c types.Color, pt types.PieceType) types.Piece {
+	if pt == types.None {
+		return types.NoPiece
 	}
-	if c == White {
-		return Piece(pt)
+	if c == types.White {
+		return types.Piece(pt)
 	}
-	return Piece(pt + 6)
+	return types.Piece(pt + 6)
 }

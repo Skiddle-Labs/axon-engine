@@ -12,6 +12,7 @@ import (
 
 	"github.com/Skiddle-Labs/axon-engine/internal/engine"
 	"github.com/Skiddle-Labs/axon-engine/internal/search"
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
 
 var (
@@ -21,6 +22,10 @@ var (
 	randomMoves = flag.Int("random", 8, "Number of random moves at start")
 	bookFile    = flag.String("book", "", "Path to Polyglot book file (optional)")
 	outputFile  = flag.String("out", "data.epd", "Output file for training data")
+	minPly      = flag.Int("minply", 16, "Minimum ply to start recording positions")
+	maxPly      = flag.Int("maxply", 200, "Maximum ply to stop recording positions")
+	adjScore    = flag.Int("adj-score", 1000, "Adjudication score (centipawns) to end games early")
+	adjCount    = flag.Int("adj-count", 4, "Number of consecutive moves above adj-score to adjudicate")
 )
 
 type GameResult int
@@ -31,20 +36,11 @@ const (
 	ResultLoss GameResult = -1
 )
 
-type Config struct {
-	NumGames    int
-	NumThreads  int
-	SearchDepth int
-	RandomMoves int
-	BookFile    string
-	OutputFile  string
-}
-
 func main() {
 	flag.Parse()
 
-	fmt.Printf("Axon Datagen - Generating %d games using %d threads\n", *numGames, *numThreads)
-	fmt.Printf("Settings: Depth %d, Random Moves %d, Output %s\n", *searchDepth, *randomMoves, *outputFile)
+	fmt.Printf("Axon Bulk Datagen - Target: %d games, Threads: %d\n", *numGames, *numThreads)
+	fmt.Printf("Search Depth: %d | Random Moves: %d | Range: %d-%d ply\n", *searchDepth, *randomMoves, *minPly, *maxPly)
 
 	var book *engine.PolyglotBook
 	if *bookFile != "" {
@@ -58,8 +54,8 @@ func main() {
 		fmt.Printf("Using opening book: %s\n", *bookFile)
 	}
 
-	// Ensure TT is initialized
-	search.GlobalTT = search.NewTranspositionTable(64)
+	// Shared TT with adequate size for high-concurrency shallow searches
+	search.GlobalTT = search.NewTranspositionTable(256)
 
 	file, err := os.OpenFile(*outputFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -71,6 +67,7 @@ func main() {
 	var wg sync.WaitGroup
 	gamesRemaining := int32(*numGames)
 	totalPositions := uint64(0)
+	totalGames := uint64(0)
 
 	startTime := time.Now()
 
@@ -78,16 +75,22 @@ func main() {
 		wg.Add(1)
 		go func(threadID int) {
 			defer wg.Done()
+			// Local random source to avoid global mutex contention
+			rng := rand.New(rand.NewSource(time.Now().UnixNano() + int64(threadID)))
+
 			for atomic.AddInt32(&gamesRemaining, -1) >= 0 {
-				positions, result := PlaySingleGame(book, *searchDepth, *randomMoves)
+				positions, result := PlaySingleGame(book, rng)
 				if len(positions) > 0 {
 					SaveGame(file, positions, result)
 					atomic.AddUint64(&totalPositions, uint64(len(positions)))
 				}
 
-				rem := atomic.LoadInt32(&gamesRemaining)
-				if rem%10 == 0 && rem >= 0 {
-					fmt.Printf("Thread %d: %d games left...\n", threadID, rem)
+				count := atomic.AddUint64(&totalGames, 1)
+				if count%10 == 0 {
+					elapsed := time.Since(startTime).Seconds()
+					posCount := atomic.LoadUint64(&totalPositions)
+					fmt.Printf("\rGames: %d/%d | Positions: %d | Pos/sec: %.0f",
+						count, *numGames, posCount, float64(posCount)/elapsed)
 				}
 			}
 		}(i)
@@ -97,15 +100,16 @@ func main() {
 
 	duration := time.Since(startTime).Seconds()
 	posCount := atomic.LoadUint64(&totalPositions)
-	fmt.Printf("\nFinished! Generated %d positions in %.2f seconds (%.0f pos/sec)\n", posCount, duration, float64(posCount)/duration)
+	fmt.Printf("\n\nFinished!\nTotal Positions: %d\nTotal Time: %.2f seconds\nFinal Throughput: %.0f pos/sec\n",
+		posCount, duration, float64(posCount)/duration)
 }
 
-func PlaySingleGame(book *engine.PolyglotBook, searchDepth int, randomMoves int) ([]string, GameResult) {
+func PlaySingleGame(book *engine.PolyglotBook, rng *rand.Rand) ([]string, GameResult) {
 	board := engine.NewBoard()
 	board.SetFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
 
-	// 1. Play moves from book or random moves to start
-	for i := 0; i < randomMoves; i++ {
+	// 1. Randomization phase (Book + Random moves)
+	for i := 0; i < *randomMoves; i++ {
 		if book != nil {
 			if move, ok := book.GetMove(board); ok {
 				board.MakeMove(move)
@@ -123,44 +127,47 @@ func PlaySingleGame(book *engine.PolyglotBook, searchDepth int, randomMoves int)
 		}
 
 		if len(legalMoves) == 0 {
-			return nil, ResultDraw // Rare for startpos
+			return nil, ResultDraw
 		}
 
-		move := legalMoves[rand.Intn(len(legalMoves))]
+		move := legalMoves[rng.Intn(len(legalMoves))]
 		board.MakeMove(move)
 	}
 
 	var positions []string
+	highScoreCounter := 0
+	lastScore := 0
 
-	// 2. Self-play until end
+	// 2. Self-play with search
 	for ply := 0; ply < 400; ply++ {
-		// Detect terminal states
+		// Basic terminal state check
 		ml := board.GenerateMoves()
-		legalCount := 0
+		hasLegal := false
 		for i := 0; i < ml.Count; i++ {
 			if board.MakeMove(ml.Moves[i]) {
 				board.UnmakeMove(ml.Moves[i])
-				legalCount++
+				hasLegal = true
+				break
 			}
 		}
 
-		if legalCount == 0 {
-			inCheck := board.IsSquareAttacked(board.Pieces[board.SideToMove][engine.King].LSB(), board.SideToMove^1)
+		if !hasLegal {
+			inCheck := board.IsSquareAttacked(board.Pieces[board.SideToMove][types.King].LSB(), board.SideToMove^1)
 			if inCheck {
-				if board.SideToMove == engine.White {
-					return positions, ResultLoss // Black wins
+				if board.SideToMove == types.White {
+					return positions, ResultLoss
 				}
-				return positions, ResultWin // White wins
+				return positions, ResultWin
 			}
-			return positions, ResultDraw // Stalemate
+			return positions, ResultDraw
 		}
 
-		// Draw detections
+		// Adjudication & Draw detections
 		if board.HalfMoveClock >= 100 {
 			return positions, ResultDraw
 		}
 
-		// 3-fold repetition check
+		// Simplified 3-fold repetition
 		reps := 0
 		for i := 0; i < board.Ply; i++ {
 			if board.History[i].Hash == board.Hash {
@@ -171,51 +178,72 @@ func PlaySingleGame(book *engine.PolyglotBook, searchDepth int, randomMoves int)
 			return positions, ResultDraw
 		}
 
-		// Record position (only if not in check and not too early/late for diversity)
-		// Positions reached via book are not recorded.
-		if board.Ply > randomMoves {
-			// We store the FEN from the perspective of the result.
-			// Tuner expects: FEN [1.0/0.5/0.0] where result is for the side in the FEN.
-			fen := GetFENWithoutCounters(board)
-			positions = append(positions, fen)
-		}
-
 		// Search for move
 		eng := search.NewEngine(board)
-		move := eng.Search(searchDepth)
+		eng.Silent = true
+		move := eng.Search(*searchDepth)
 
 		if move == engine.NoMove {
-			// Fallback to first legal move
-			for i := 0; i < ml.Count; i++ {
-				if board.MakeMove(ml.Moves[i]) {
-					board.UnmakeMove(ml.Moves[i])
-					move = ml.Moves[i]
-					break
+			return positions, ResultDraw
+		}
+
+		// Extract score from TT for adjudication
+		score, _, found := search.GlobalTT.Probe(board.Hash, *searchDepth, -search.Infinity, search.Infinity, 0)
+		if found {
+			absScore := score
+			if absScore < 0 {
+				absScore = -absScore
+			}
+
+			if absScore >= *adjScore {
+				highScoreCounter++
+			} else {
+				highScoreCounter = 0
+			}
+
+			// End game if score is consistently huge
+			if highScoreCounter >= *adjCount {
+				if score > 0 {
+					if board.SideToMove == types.White {
+						return positions, ResultWin
+					}
+					return positions, ResultLoss
+				} else {
+					if board.SideToMove == types.White {
+						return positions, ResultLoss
+					}
+					return positions, ResultWin
 				}
+			}
+			lastScore = score
+		}
+
+		// Filter and record position
+		if board.Ply >= *minPly && board.Ply <= *maxPly {
+			// Skip positions that are in check or have too high/low eval (unstable)
+			inCheck := board.IsSquareAttacked(board.Pieces[board.SideToMove][types.King].LSB(), board.SideToMove^1)
+			if !inCheck && lastScore < 2000 && lastScore > -2000 {
+				fen := GetEPDFEN(board)
+				positions = append(positions, fen)
 			}
 		}
 
 		if !board.MakeMove(move) {
-			break // Should not happen
+			break
 		}
 	}
 
 	return positions, ResultDraw
 }
 
-func GetFENWithoutCounters(b *engine.Board) string {
-	// We want a clean FEN for the tuner.
-	// The tuner usually cares about the side to move and the pieces.
-	// Standard EPD format is common.
+func GetEPDFEN(b *engine.Board) string {
 	fields := make([]string, 0, 4)
-
-	// Pieces
 	var pieces strings.Builder
 	for r := 7; r >= 0; r-- {
 		empty := 0
 		for f := 0; f < 8; f++ {
-			p := b.PieceAt(engine.NewSquare(f, r))
-			if p == engine.NoPiece {
+			p := b.PieceAt(types.NewSquare(f, r))
+			if p == types.NoPiece {
 				empty++
 			} else {
 				if empty > 0 {
@@ -233,15 +261,11 @@ func GetFENWithoutCounters(b *engine.Board) string {
 		}
 	}
 	fields = append(fields, pieces.String())
-
-	// Side to move
-	if b.SideToMove == engine.White {
+	if b.SideToMove == types.White {
 		fields = append(fields, "w")
 	} else {
 		fields = append(fields, "b")
 	}
-
-	// Castling
 	castling := ""
 	if b.Castling&engine.WhiteKingside != 0 {
 		castling += "K"
@@ -259,18 +283,15 @@ func GetFENWithoutCounters(b *engine.Board) string {
 		castling = "-"
 	}
 	fields = append(fields, castling)
-
-	// EP
-	if b.EnPassant != engine.NoSquare {
+	if b.EnPassant != types.NoSquare {
 		fields = append(fields, b.EnPassant.String())
 	} else {
 		fields = append(fields, "-")
 	}
-
 	return strings.Join(fields, " ")
 }
 
-func GetPieceChar(p engine.Piece) string {
+func GetPieceChar(p types.Piece) string {
 	chars := ".PNBRQKpnbrqk"
 	return string(chars[int(p)])
 }
@@ -289,13 +310,7 @@ func SaveGame(file *os.File, positions []string, result GameResult) {
 	}
 
 	for _, fen := range positions {
-		// The result in the data file should be from the perspective of the player in the FEN.
-		// If result is 1.0 (White won) and FEN is Black to move, then for Black the result is 0.0.
-		// However, tuner's loadEntries handles this:
-		// actualResult := e.result
-		// if e.board.SideToMove == engine.Black { actualResult = 1.0 - actualResult }
-		// So we always store the result relative to White.
-
+		// EPD format: FEN [result]
 		fmt.Fprintf(file, "%s [%s]\n", fen, resStr)
 	}
 }

@@ -2,6 +2,7 @@ package search
 
 import (
 	"github.com/Skiddle-Labs/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
 
 var mvvLva = [7][7]int{
@@ -37,7 +38,7 @@ func (e *Engine) orderMoves(ml *engine.MoveList, ttMove engine.Move, ply int) {
 		if flags&engine.CaptureFlag != 0 {
 			victim := e.Board.PieceAt(move.To()).Type()
 			if flags == engine.EnPassantFlag {
-				victim = engine.Pawn
+				victim = types.Pawn
 			}
 			if e.Board.SEE(move) >= 0 {
 				scores[i] = 25000 + mvvLva[victim][piece]

@@ -29,7 +29,11 @@ This document tracks the planned improvements and current progress of the Axon c
 - [x] **Pawn Storm Detection**: Specifically penalize/reward the advancement of pawns toward the enemy king.
     - *Note: New parameters added. Must run a short SPSA (5k-10k iterations) to calibrate these weights after the current 50k run finishes.*
 - [x] **Endgame Scaling & Draw Detection**: Scale evaluation towards zero in drawish endgames (e.g., insufficient material).
-- [ ] **NNUE Implementation**: Implement a neural network evaluation as a final step while retaining HCE for speed and data generation.
+- [ ] **NNUE Implementation**: Implement a neural network evaluation as a final step while retaining HCE.
+    - [x] **Incremental Update Hooks**: Refactor `MakeMove`/`UnmakeMove` to support efficient accumulator updates via `addPiece`/`removePiece` helpers.
+    - [/] **Architecture Design**: Define HalfKP features and network topology (Input -> Hidden -> Output).
+    - [x] **Bulk Datagen**: Optimize the data generator for high-volume position production (multi-threaded, RNG per thread, adjudication).
+    - [ ] **Inference Engine**: Implement the forward pass (efficient dot products and activation).
 
 ## 3. Infrastructure & Features (Current Focus)
 - [x] **Benchmarking Tool**: Internal `bench` command for consistent performance and node-count measurement.
@@ -46,4 +50,4 @@ This document tracks the planned improvements and current progress of the Axon c
 - [ ] **SIMD Optimizations**: Use SIMD instructions for critical paths like bitboard operations or future NNUE inference.
 
 ---
-*Last Updated: February 25, 2026*
+*Last Updated: February 27, 2026*

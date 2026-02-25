@@ -1,5 +1,9 @@
 package engine
 
+import (
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
+)
+
 // KingAttacks stores precomputed bitboards of all possible king moves for each square.
 var KingAttacks [64]Bitboard
 
@@ -8,12 +12,12 @@ var KnightAttacks [64]Bitboard
 
 func init() {
 	for sq := 0; sq < 64; sq++ {
-		KingAttacks[sq] = maskKingAttacks(Square(sq))
-		KnightAttacks[sq] = maskKnightAttacks(Square(sq))
+		KingAttacks[sq] = maskKingAttacks(types.Square(sq))
+		KnightAttacks[sq] = maskKnightAttacks(types.Square(sq))
 	}
 }
 
-func maskKingAttacks(sq Square) Bitboard {
+func maskKingAttacks(sq types.Square) Bitboard {
 	var attacks Bitboard
 	b := Bitboard(1 << sq)
 
@@ -49,7 +53,7 @@ func maskKingAttacks(sq Square) Bitboard {
 	return attacks
 }
 
-func maskKnightAttacks(sq Square) Bitboard {
+func maskKnightAttacks(sq types.Square) Bitboard {
 	var attacks Bitboard
 	b := Bitboard(1 << sq)
 

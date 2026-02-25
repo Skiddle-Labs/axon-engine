@@ -2,6 +2,8 @@ package engine
 
 import (
 	"testing"
+
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
 
 // TestFENParsing verifies that the board correctly parses FEN strings.
@@ -14,18 +16,18 @@ func TestFENParsing(t *testing.T) {
 	}
 
 	// Check piece at E4
-	p := b.PieceAt(E4)
-	if p != WhitePawn {
+	p := b.PieceAt(types.E4)
+	if p != types.WhitePawn {
 		t.Errorf("Expected WhitePawn at E4, got %v", p)
 	}
 
 	// Check side to move
-	if b.SideToMove != Black {
+	if b.SideToMove != types.Black {
 		t.Errorf("Expected side to move to be Black, got %v", b.SideToMove)
 	}
 
 	// Check En Passant square
-	if b.EnPassant != E3 {
+	if b.EnPassant != types.E3 {
 		t.Errorf("Expected En Passant square to be E3, got %v", b.EnPassant)
 	}
 
@@ -66,7 +68,7 @@ func TestMakeUnmakeConsistency(t *testing.T) {
 	initialHash := b.Hash
 
 	// E2E4
-	m := NewMove(E2, E4, DoublePawnPush)
+	m := NewMove(types.E2, types.E4, DoublePawnPush)
 	if !b.MakeMove(m) {
 		t.Fatal("E2E4 move was rejected as illegal")
 	}
@@ -94,18 +96,18 @@ func TestIsSquareAttacked(t *testing.T) {
 	b.SetFEN("r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 0 1")
 
 	// F7 is attacked by White Queen and Bishop
-	if !b.IsSquareAttacked(F7, White) {
+	if !b.IsSquareAttacked(types.F7, types.White) {
 		t.Error("Square F7 should be attacked by White")
 	}
 
 	// E1 (White King) is NOT attacked by Black
-	if b.IsSquareAttacked(E1, Black) {
+	if b.IsSquareAttacked(types.E1, types.Black) {
 		t.Error("Square E1 should not be attacked by Black in this position")
 	}
 
 	// D1 is attacked by White Queen (self-attack check - should be handled by caller)
 	// But let's check if the logic detects the Queen on F3 attacking D1
-	if !b.IsSquareAttacked(D1, White) {
+	if !b.IsSquareAttacked(types.D1, types.White) {
 		t.Error("Square D1 should be 'attacked' by the White Queen on F3")
 	}
 }
@@ -113,14 +115,14 @@ func TestIsSquareAttacked(t *testing.T) {
 // TestKnightAttacks verifies the precomputed knight move table.
 func TestKnightAttacks(t *testing.T) {
 	// Knight on D4 should attack 8 squares
-	attacks := KnightAttacks[D4]
+	attacks := KnightAttacks[types.D4]
 	count := attacks.Count()
 	if count != 8 {
 		t.Errorf("Knight on D4 should attack 8 squares, got %d", count)
 	}
 
 	// Knight on A1 should attack 2 squares (B3, C2)
-	attacks = KnightAttacks[A1]
+	attacks = KnightAttacks[types.A1]
 	count = attacks.Count()
 	if count != 2 {
 		t.Errorf("Knight on A1 should attack 2 squares, got %d", count)
@@ -132,11 +134,11 @@ func TestSlidingAttacks(t *testing.T) {
 	b := NewBoard()
 	// Clear board, place Rook on D4
 	b.Clear()
-	b.Pieces[White][Rook].Set(D4)
-	b.Colors[White].Set(D4)
+	b.Pieces[types.White][types.Rook].Set(types.D4)
+	b.Colors[types.White].Set(types.D4)
 
 	occ := b.Occupancy()
-	attacks := GetRookAttacks(D4, occ)
+	attacks := GetRookAttacks(types.D4, occ)
 
 	// A rook on an empty board should attack 14 squares (7 on rank, 7 on file)
 	if attacks.Count() != 14 {
@@ -144,16 +146,16 @@ func TestSlidingAttacks(t *testing.T) {
 	}
 
 	// Block the rook with a piece on D6
-	b.Pieces[Black][Pawn].Set(D6)
-	b.Colors[Black].Set(D6)
+	b.Pieces[types.Black][types.Pawn].Set(types.D6)
+	b.Colors[types.Black].Set(types.D6)
 	occ = b.Occupancy()
-	attacks = GetRookAttacks(D4, occ)
+	attacks = GetRookAttacks(types.D4, occ)
 
 	// Should now attack D5, D6, but not D7 or D8
-	if attacks.Test(D7) || attacks.Test(D8) {
+	if attacks.Test(types.D7) || attacks.Test(types.D8) {
 		t.Error("Rook should be blocked by piece on D6")
 	}
-	if !attacks.Test(D6) {
+	if !attacks.Test(types.D6) {
 		t.Error("Rook should attack the blocking piece square D6")
 	}
 }

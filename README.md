@@ -10,6 +10,7 @@ Axon is a high-performance, tournament-grade chess engine written in Go (Golang)
 - **Precomputed Attacks**: Fast lookup tables for leapers (Kings, Knights) and Ray-casting (Magic Bitboards) for sliding pieces.
 - **SEE (Static Exchange Evaluation)**: Accurately calculates the material balance of capture sequences to prune losing captures.
 - **Pawn Hash Table**: High-speed specialized cache for pawn structure evaluations, significantly boosting search speed (NPS).
+- **NNUE Accumulators**: Incremental first-layer hidden layer updates (HalfKP features) integrated into the move-handling core for future neural network inference.
 
 ### Search Algorithms
 - **Modular Search Architecture**: Decoupled search logic (Negamax, Ordering, LMR, TT) for high maintainability and performance.
@@ -34,8 +35,9 @@ Axon is a high-performance, tournament-grade chess engine written in Go (Golang)
 - **Killer Moves & Countermove Heuristic**: Prioritizes quiet moves that have proven effective in similar branches.
 - **History Heuristic & Penalty**: Rewards moves that cause beta cutoffs and penalizes quiet moves that fail to improve alpha (Negative History).
 
-### Evaluation (Hybrid Tapered HCE)
-- **Tapered Evaluation**: Dynamically interpolates between Midgame and Endgame scores.
+### Evaluation (Hybrid HCE + NNUE)
+- **Tapered HCE**: Dynamically interpolates between Midgame and Endgame scores using hand-crafted features.
+- **NNUE (In Progress)**: Currently supports incremental feature updates and high-performance data generation for neural network training.
 - **Refined King Safety**: Uses an attacking zone model and non-linear safety tables with piece-specific weighting.
 - **Advanced Pawn Evaluation**: Sophisticated logic for passed pawns, connected structures, and shields.
 - **SPSA & Texel Tuning**: Support for both Local Search and SPSA (Simultaneous Perturbation Stochastic Approximation) for parameter optimization.
@@ -78,7 +80,7 @@ Axon can be configured using the `setoption name <Name> value <Value>` command.
 
 - **Hash**: Transposition table size in MB (Default: 64, Max: 65536).
 - **Threads**: Number of search threads (Default: 1, Max: 128).
-- **MultiPV**: Number of best move lines to analyze simultaneously (Default: 1).
+- **MultiPV**: Number of best move lines to analyze simultaneously (Default: 1). Optimized implementation using root-level TT exclusion for accurate analysis.
 - **Book File**: Path to a **Polyglot (.bin)** opening book.
 - **Book Best Move**: If true, the engine picks the move with the highest weight from the book.
 - **Move Overhead**: Time buffer in ms to account for network/GUI lag (Default: 10).
@@ -96,7 +98,7 @@ Generates high-quality EPD training data through multi-threaded self-play with o
 A multi-threaded optimizer supporting both **Texel (Local Search)** and **SPSA** methods. It minimizes Mean Squared Error (MSE) between evaluation and game results.
 
 ### Applier (`cmd/apply`)
-An automated tool to parse tuner results (`.txt`) and inject the optimized parameters directly into the Go source code (`internal/eval/params.go`).
+An automated tool to parse tuner results (`.txt`) and inject the optimized parameters directly into the Go source code (`internal/eval/params.go`). Now supports piece-specific weights and table-based parameters with cross-package type awareness.
 
 For detailed instructions, see the [Tuning Guide](TUNING_GUIDE.md).
 

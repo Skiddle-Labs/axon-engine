@@ -13,6 +13,7 @@ import (
 
 	"github.com/Skiddle-Labs/axon-engine/internal/engine"
 	"github.com/Skiddle-Labs/axon-engine/internal/eval"
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
 
 // Entry represents a single position and its game result.
@@ -184,7 +185,7 @@ func CalculateMSEParallel(entries []PrecomputedEntry, k float64) float64 {
 				entry := entries[j]
 				score := float64(entry.Evaluate())
 				actualResult := entry.Result
-				if entry.SideToMove == engine.Black {
+				if entry.SideToMove == types.Black {
 					actualResult = 1.0 - actualResult
 				}
 				prediction := Sigmoid(score, k)
@@ -353,7 +354,7 @@ func getTunableParams() ([]*int, []string) {
 
 	// PSTs
 	typeNames := []string{"None", "Pawn", "Knight", "Bishop", "Rook", "Queen", "King"}
-	for pt := engine.Pawn; pt <= engine.King; pt++ {
+	for pt := types.Pawn; pt <= types.King; pt++ {
 		for i := 0; i < 64; i++ {
 			params = append(params, &eval.MgPST[pt][i])
 			names = append(names, fmt.Sprintf("MgPST[%s][%d]", typeNames[pt], i))
@@ -368,7 +369,7 @@ func getTunableParams() ([]*int, []string) {
 	params = append(params, &eval.PawnStormMG, &eval.PawnStormEG)
 	names = append(names, "PawnStormMG", "PawnStormEG")
 
-	for pt := engine.Knight; pt <= engine.Queen; pt++ {
+	for pt := types.Knight; pt <= types.Queen; pt++ {
 		params = append(params, &eval.KingAttackerWeight[pt])
 		names = append(names, fmt.Sprintf("KingAttackerWeight[%s]", typeNames[pt]))
 	}

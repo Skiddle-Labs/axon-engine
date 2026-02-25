@@ -85,22 +85,14 @@ func updateParams(content string, tunedParams map[string]int) string {
 	lines := strings.Split(content, "\n")
 	updatedCount := 0
 
+	typeNames := []string{"None", "Pawn", "Knight", "Bishop", "Rook", "Queen", "King"}
+
 	// Regex to match: Name = Value
 	// Handles scalars: PawnMG = 85 or var PawnMG = 85
 	scalarRegex := regexp.MustCompile(`^(\s*(?:var\s+)?)([A-Za-z0-9_]+)(\s*=\s*)(-?[0-9]+)(.*)$`)
 
-	// Regex to match PST/Table entries: value, value, value
-	// We need to be careful here because PSTs are multi-line arrays.
-	// We use a simple line-by-line replacement for PST indices like MgPST[Pawn][0]
-
-	// Because PSTs in params.go are formatted as:
-	// engine.Pawn: {
-	//    0, 0, 0, ...
-	// }
-	// The tuner names them as MgPST[Pawn][0].
-
 	type pstContext struct {
-		prefix string // "MgPST" or "EgPST" or "SafetyTable"
+		prefix string // "MgPST", "EgPST", "SafetyTable", "KingAttackerWeight"
 		piece  string // "Pawn", "Knight", etc.
 		index  int
 	}
@@ -121,11 +113,20 @@ func updateParams(content string, tunedParams map[string]int) string {
 			ctx.prefix = "SafetyTable"
 			ctx.index = 0
 			continue
+		} else if strings.HasPrefix(trimmed, "var KingAttackerWeight") {
+			ctx.prefix = "KingAttackerWeight"
+			ctx.index = 0
+			continue
 		}
 
 		// Detect Piece sub-blocks in PST
-		if ctx.prefix != "" && strings.Contains(trimmed, "engine.") {
-			pieceName := strings.TrimSuffix(strings.TrimPrefix(trimmed, "engine."), ": {")
+		if ctx.prefix != "" && (strings.Contains(trimmed, "types.") || strings.Contains(trimmed, "engine.")) {
+			pieceName := ""
+			if strings.Contains(trimmed, "types.") {
+				pieceName = strings.TrimSuffix(strings.TrimPrefix(trimmed, "types."), ": {")
+			} else {
+				pieceName = strings.TrimSuffix(strings.TrimPrefix(trimmed, "engine."), ": {")
+			}
 			ctx.piece = pieceName
 			ctx.index = 0
 			continue
@@ -155,8 +156,16 @@ func updateParams(content string, tunedParams map[string]int) string {
 
 		// Handle Array/Table entry replacements
 		if ctx.prefix != "" {
-			// Find all numbers in the line
-			parts := strings.Split(line, ",")
+			// Find all numbers in the line, but stop before any comments
+			commentIdx := strings.Index(line, "//")
+			relevantPart := line
+			commentPart := ""
+			if commentIdx != -1 {
+				relevantPart = line[:commentIdx]
+				commentPart = line[commentIdx:]
+			}
+
+			parts := strings.Split(relevantPart, ",")
 			for j, part := range parts {
 				valTrim := strings.TrimSpace(part)
 				if valTrim == "" || valTrim == "{" || valTrim == "}" {
@@ -169,9 +178,14 @@ func updateParams(content string, tunedParams map[string]int) string {
 				}
 
 				paramName := ""
-				if ctx.prefix == "SafetyTable" {
+				switch ctx.prefix {
+				case "SafetyTable":
 					paramName = fmt.Sprintf("SafetyTable[%d]", ctx.index)
-				} else {
+				case "KingAttackerWeight":
+					if ctx.index < len(typeNames) {
+						paramName = fmt.Sprintf("KingAttackerWeight[%s]", typeNames[ctx.index])
+					}
+				default:
 					paramName = fmt.Sprintf("%s[%s][%d]", ctx.prefix, ctx.piece, ctx.index)
 				}
 
@@ -182,7 +196,7 @@ func updateParams(content string, tunedParams map[string]int) string {
 				}
 				ctx.index++
 			}
-			lines[i] = strings.Join(parts, ",")
+			lines[i] = strings.Join(parts, ",") + commentPart
 		}
 	}
 

@@ -1,6 +1,19 @@
-package engine
+package types
 
 import "fmt"
+
+// NNUE Architecture Constants
+const (
+	// InputFeatures represents the total number of input features (64 squares * 12 piece types)
+	InputFeatures = 768
+
+	// L1Size is the size of the first hidden layer (Accumulator)
+	L1Size = 256
+)
+
+// Accumulator represents the first hidden layer of the NNUE.
+// It is updated incrementally during MakeMove and UnmakeMove.
+type Accumulator [L1Size]int16
 
 // Color represents the player color (White or Black).
 type Color int8
@@ -59,6 +72,17 @@ func (p Piece) Type() PieceType {
 		return PieceType(p)
 	}
 	return PieceType(p - 6)
+}
+
+// FlippedColor returns the piece with its color flipped.
+func (p Piece) FlippedColor() Piece {
+	if p == NoPiece {
+		return NoPiece
+	}
+	if p <= WhiteKing {
+		return p + 6
+	}
+	return p - 6
 }
 
 // PieceType returns the type of the piece regardless of color.
@@ -153,6 +177,11 @@ func (s Square) File() int {
 // Rank returns the rank (row) of the square (0-7).
 func (s Square) Rank() int {
 	return int(s / 8)
+}
+
+// Flipped returns the square flipped vertically (for the other player's perspective).
+func (s Square) Flipped() Square {
+	return s ^ 56
 }
 
 func (s Square) String() string {

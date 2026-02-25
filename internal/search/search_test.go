@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/Skiddle-Labs/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
 
 // TestSearch_MateIn1 verifies that the engine finds a simple mate in one.
@@ -16,8 +17,8 @@ func TestSearch_MateIn1(t *testing.T) {
 	searchEngine := NewEngine(b)
 	bestMove := searchEngine.Search(4)
 
-	expectedFrom := engine.F3
-	expectedTo := engine.F7
+	expectedFrom := types.F3
+	expectedTo := types.F7
 
 	if bestMove.From() != expectedFrom || bestMove.To() != expectedTo {
 		t.Errorf("Expected mate move f3f7, got %s", bestMove.String())
@@ -34,8 +35,8 @@ func TestSearch_MateIn2(t *testing.T) {
 	searchEngine := NewEngine(b)
 	bestMove := searchEngine.Search(4)
 
-	expectedFrom := engine.E2
-	expectedTo := engine.E8
+	expectedFrom := types.E2
+	expectedTo := types.E8
 
 	if bestMove.From() != expectedFrom || bestMove.To() != expectedTo {
 		t.Errorf("Expected move e2e8, got %s", bestMove.String())

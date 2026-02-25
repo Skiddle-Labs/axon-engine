@@ -1,5 +1,9 @@
 package engine
 
+import (
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
+)
+
 var PieceValues = [7]int{0, 100, 300, 300, 500, 900, 20000}
 
 // SEE (Static Exchange Evaluation) determines the material balance of a series
@@ -15,7 +19,7 @@ func (b *Board) SEE(m Move) int {
 	victimType := victimPiece.Type()
 
 	if flags == EnPassantFlag {
-		victimType = Pawn
+		victimType = types.Pawn
 	}
 
 	// gain[d] stores the material gain at depth d
@@ -31,7 +35,7 @@ func (b *Board) SEE(m Move) int {
 
 	for d < 64 {
 		atType, atSq := b.getLeastValuableAttacker(attackers, us)
-		if atSq == NoSquare {
+		if atSq == types.NoSquare {
 			break
 		}
 
@@ -55,39 +59,39 @@ func (b *Board) SEE(m Move) int {
 }
 
 // AllAttackers returns a bitboard of all pieces attacking the given square.
-func (b *Board) AllAttackers(sq Square, occ Bitboard) Bitboard {
+func (b *Board) AllAttackers(sq types.Square, occ Bitboard) Bitboard {
 	var attackers Bitboard
 
 	// Pawns: Use the "reverse" attack patterns
-	attackers |= (b.blackPawnAttacks(sq) & b.Pieces[White][Pawn])
-	attackers |= (b.whitePawnAttacks(sq) & b.Pieces[Black][Pawn])
+	attackers |= (b.blackPawnAttacks(sq) & b.Pieces[types.White][types.Pawn])
+	attackers |= (b.whitePawnAttacks(sq) & b.Pieces[types.Black][types.Pawn])
 
 	// Knights
-	attackers |= (KnightAttacks[sq] & (b.Colors[White] | b.Colors[Black]) & (b.Pieces[White][Knight] | b.Pieces[Black][Knight]))
+	attackers |= (KnightAttacks[sq] & (b.Colors[types.White] | b.Colors[types.Black]) & (b.Pieces[types.White][types.Knight] | b.Pieces[types.Black][types.Knight]))
 
 	// Kings
-	attackers |= (KingAttacks[sq] & (b.Colors[White] | b.Colors[Black]) & (b.Pieces[White][King] | b.Pieces[Black][King]))
+	attackers |= (KingAttacks[sq] & (b.Colors[types.White] | b.Colors[types.Black]) & (b.Pieces[types.White][types.King] | b.Pieces[types.Black][types.King]))
 
 	// Sliders: Bishops and Queens
-	bishopQueens := (b.Pieces[White][Bishop] | b.Pieces[Black][Bishop] | b.Pieces[White][Queen] | b.Pieces[Black][Queen])
+	bishopQueens := (b.Pieces[types.White][types.Bishop] | b.Pieces[types.Black][types.Bishop] | b.Pieces[types.White][types.Queen] | b.Pieces[types.Black][types.Queen])
 	attackers |= (GetBishopAttacks(sq, occ) & bishopQueens)
 
 	// Sliders: Rooks and Queens
-	rookQueens := (b.Pieces[White][Rook] | b.Pieces[Black][Rook] | b.Pieces[White][Queen] | b.Pieces[Black][Queen])
+	rookQueens := (b.Pieces[types.White][types.Rook] | b.Pieces[types.Black][types.Rook] | b.Pieces[types.White][types.Queen] | b.Pieces[types.Black][types.Queen])
 	attackers |= (GetRookAttacks(sq, occ) & rookQueens)
 
 	return attackers
 }
 
 // getLeastValuableAttacker finds the weakest piece of a given color attacking a square.
-func (b *Board) getLeastValuableAttacker(attackers Bitboard, color Color) (PieceType, Square) {
-	for pt := Pawn; pt <= King; pt++ {
+func (b *Board) getLeastValuableAttacker(attackers Bitboard, color types.Color) (types.PieceType, types.Square) {
+	for pt := types.Pawn; pt <= types.King; pt++ {
 		subset := attackers & b.Pieces[color][pt]
 		if !subset.IsEmpty() {
 			return pt, subset.LSB()
 		}
 	}
-	return None, NoSquare
+	return types.None, types.NoSquare
 }
 
 func maxSEE(a, b int) int {

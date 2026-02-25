@@ -2,6 +2,7 @@ package eval
 
 import (
 	"github.com/Skiddle-Labs/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
 
 // Evaluate returns a score for the current board position using tapered evaluation.
@@ -20,13 +21,13 @@ func Evaluate(b *engine.Board) int {
 		pMgB = entry.MgScore[1]
 		pEgB = entry.EgScore[1]
 	} else {
-		pMgW, pEgW = evaluatePawnStructure(b, engine.White)
-		pMgB, pEgB = evaluatePawnStructure(b, engine.Black)
+		pMgW, pEgW = evaluatePawnStructure(b, types.White)
+		pMgB, pEgB = evaluatePawnStructure(b, types.Black)
 		GlobalPawnTable.Store(b.PawnHash, pMgW, pEgW, pMgB, pEgB)
 	}
 
-	mgWhite, egWhite := evaluateColor(b, engine.White, pMgW, pEgW)
-	mgBlack, egBlack := evaluateColor(b, engine.Black, pMgB, pEgB)
+	mgWhite, egWhite := evaluateColor(b, types.White, pMgW, pEgW)
+	mgBlack, egBlack := evaluateColor(b, types.Black, pMgB, pEgB)
 
 	mgScore := mgWhite - mgBlack
 	egScore := egWhite - egBlack
@@ -34,13 +35,13 @@ func Evaluate(b *engine.Board) int {
 	score := (mgScore*mgW + egScore*egW) / TotalPhase
 
 	// Scale evaluation in drawish endgames
-	if score > 0 && b.Pieces[engine.White][engine.Pawn] == 0 {
+	if score > 0 && b.Pieces[types.White][types.Pawn] == 0 {
 		score = score * 3 / 4
-	} else if score < 0 && b.Pieces[engine.Black][engine.Pawn] == 0 {
+	} else if score < 0 && b.Pieces[types.Black][types.Pawn] == 0 {
 		score = score * 3 / 4
 	}
 
-	if b.SideToMove == engine.Black {
+	if b.SideToMove == types.Black {
 		return -score
 	}
 	return score
@@ -49,10 +50,10 @@ func Evaluate(b *engine.Board) int {
 // calculatePhase determines the game phase for tapered evaluation.
 func calculatePhase(b *engine.Board) (int, int, int) {
 	phase := TotalPhase
-	phase -= (b.Pieces[engine.White][engine.Knight].Count() + b.Pieces[engine.Black][engine.Knight].Count()) * KnightPhase
-	phase -= (b.Pieces[engine.White][engine.Bishop].Count() + b.Pieces[engine.Black][engine.Bishop].Count()) * BishopPhase
-	phase -= (b.Pieces[engine.White][engine.Rook].Count() + b.Pieces[engine.Black][engine.Rook].Count()) * RookPhase
-	phase -= (b.Pieces[engine.White][engine.Queen].Count() + b.Pieces[engine.Black][engine.Queen].Count()) * QueenPhase
+	phase -= (b.Pieces[types.White][types.Knight].Count() + b.Pieces[types.Black][types.Knight].Count()) * KnightPhase
+	phase -= (b.Pieces[types.White][types.Bishop].Count() + b.Pieces[types.Black][types.Bishop].Count()) * BishopPhase
+	phase -= (b.Pieces[types.White][types.Rook].Count() + b.Pieces[types.Black][types.Rook].Count()) * RookPhase
+	phase -= (b.Pieces[types.White][types.Queen].Count() + b.Pieces[types.Black][types.Queen].Count()) * QueenPhase
 
 	if phase < 0 {
 		phase = 0
@@ -64,12 +65,12 @@ func calculatePhase(b *engine.Board) (int, int, int) {
 }
 
 // evaluateColor computes the evaluation for a single side.
-func evaluateColor(b *engine.Board, c engine.Color, pMg, pEg int) (int, int) {
+func evaluateColor(b *engine.Board, c types.Color, pMg, pEg int) (int, int) {
 	mg, eg := pMg, pEg
 
 	// 1. PST and Piece Material
 	// We handle piece material in evaluatePieces and non-pawn PST here.
-	for pt := engine.Knight; pt <= engine.King; pt++ {
+	for pt := types.Knight; pt <= types.King; pt++ {
 		pieces := b.Pieces[c][pt]
 		for pieces != 0 {
 			sq := pieces.PopLSB()
@@ -98,15 +99,15 @@ func evaluateColor(b *engine.Board, c engine.Color, pMg, pEg int) (int, int) {
 }
 
 // evaluatePawnStructure calculates pawn-only scores (material, PST, structure).
-func evaluatePawnStructure(b *engine.Board, c engine.Color) (int, int) {
+func evaluatePawnStructure(b *engine.Board, c types.Color) (int, int) {
 	mg, eg := 0, 0
 
-	pawns := b.Pieces[c][engine.Pawn]
+	pawns := b.Pieces[c][types.Pawn]
 	for pawns != 0 {
 		sq := pawns.PopLSB()
 		idx := getPST(sq, c)
-		mg += MgPST[engine.Pawn][idx] + PawnMG
-		eg += EgPST[engine.Pawn][idx] + PawnEG
+		mg += MgPST[types.Pawn][idx] + PawnMG
+		eg += EgPST[types.Pawn][idx] + PawnEG
 	}
 
 	pmg, peg := evaluatePawns(b, c)
@@ -114,10 +115,10 @@ func evaluatePawnStructure(b *engine.Board, c engine.Color) (int, int) {
 }
 
 // getPST maps a square to its value in the Piece-Square Table.
-func getPST(sq engine.Square, c engine.Color) int {
+func getPST(sq types.Square, c types.Color) int {
 	rank := int(sq) / 8
 	file := int(sq) % 8
-	if c == engine.White {
+	if c == types.White {
 		return (7-rank)*8 + file
 	}
 	return rank*8 + file
@@ -125,18 +126,18 @@ func getPST(sq engine.Square, c engine.Color) int {
 
 // isInsufficientMaterial returns true if the position is a forced draw by rule.
 func isInsufficientMaterial(b *engine.Board) bool {
-	if b.Pieces[engine.White][engine.Pawn] != 0 || b.Pieces[engine.Black][engine.Pawn] != 0 {
+	if b.Pieces[types.White][types.Pawn] != 0 || b.Pieces[types.Black][types.Pawn] != 0 {
 		return false
 	}
-	if b.Pieces[engine.White][engine.Rook] != 0 || b.Pieces[engine.Black][engine.Rook] != 0 ||
-		b.Pieces[engine.White][engine.Queen] != 0 || b.Pieces[engine.Black][engine.Queen] != 0 {
+	if b.Pieces[types.White][types.Rook] != 0 || b.Pieces[types.Black][types.Rook] != 0 ||
+		b.Pieces[types.White][types.Queen] != 0 || b.Pieces[types.Black][types.Queen] != 0 {
 		return false
 	}
 
-	wKnights := b.Pieces[engine.White][engine.Knight].Count()
-	wBishops := b.Pieces[engine.White][engine.Bishop].Count()
-	bKnights := b.Pieces[engine.Black][engine.Knight].Count()
-	bBishops := b.Pieces[engine.Black][engine.Bishop].Count()
+	wKnights := b.Pieces[types.White][types.Knight].Count()
+	wBishops := b.Pieces[types.White][types.Bishop].Count()
+	bKnights := b.Pieces[types.Black][types.Knight].Count()
+	bBishops := b.Pieces[types.Black][types.Bishop].Count()
 
 	if wKnights == 0 && wBishops == 0 && bKnights == 0 && bBishops == 0 {
 		return true // K vs K

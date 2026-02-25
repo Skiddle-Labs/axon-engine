@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"math/rand"
 	"os"
+
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
 
 // Polyglot Zobrist keys as defined by the Polyglot specification.
@@ -198,12 +200,12 @@ func (b *PolyglotBook) ComputePolyglotHash(board *Board) uint64 {
 
 	// Pieces
 	for s := 0; s < 64; s++ {
-		sq := Square(s)
+		sq := types.Square(s)
 		piece := board.PieceAt(sq)
-		if piece != NoPiece {
+		if piece != types.NoPiece {
 			// Polyglot piece mapping: WP, BP, WN, BN, WB, BB, WR, BR, WQ, BQ, WK, BK
 			pIdx := 2 * int(piece.Type()-1)
-			if piece.Color() == Black {
+			if piece.Color() == types.Black {
 				pIdx++
 			}
 			// Polyglot uses rank*8 + file where A1=0, H8=63
@@ -229,26 +231,26 @@ func (b *PolyglotBook) ComputePolyglotHash(board *Board) uint64 {
 
 	// En Passant
 	// Only XOR if there is a pawn that can capture it
-	if board.EnPassant != NoSquare {
+	if board.EnPassant != types.NoSquare {
 		file := board.EnPassant.File()
 		canCapture := false
-		if board.SideToMove == White {
+		if board.SideToMove == types.White {
 			rank := board.EnPassant.Rank()
 			if rank == 5 { // White EP square is rank 6 (index 5)
-				if file > 0 && board.PieceAt(NewSquare(file-1, 4)) == WhitePawn {
+				if file > 0 && board.PieceAt(types.NewSquare(file-1, 4)) == types.WhitePawn {
 					canCapture = true
 				}
-				if file < 7 && board.PieceAt(NewSquare(file+1, 4)) == WhitePawn {
+				if file < 7 && board.PieceAt(types.NewSquare(file+1, 4)) == types.WhitePawn {
 					canCapture = true
 				}
 			}
 		} else {
 			rank := board.EnPassant.Rank()
 			if rank == 2 { // Black EP square is rank 3 (index 2)
-				if file > 0 && board.PieceAt(NewSquare(file-1, 3)) == BlackPawn {
+				if file > 0 && board.PieceAt(types.NewSquare(file-1, 3)) == types.BlackPawn {
 					canCapture = true
 				}
-				if file < 7 && board.PieceAt(NewSquare(file+1, 3)) == BlackPawn {
+				if file < 7 && board.PieceAt(types.NewSquare(file+1, 3)) == types.BlackPawn {
 					canCapture = true
 				}
 			}
@@ -259,7 +261,7 @@ func (b *PolyglotBook) ComputePolyglotHash(board *Board) uint64 {
 	}
 
 	// Turn
-	if board.SideToMove == Black {
+	if board.SideToMove == types.Black {
 		hash ^= polyglotTurnKey
 	}
 
@@ -273,26 +275,26 @@ func (b *PolyglotBook) parsePolyglotMove(board *Board, raw uint16) Move {
 	fromRank := int((raw >> 9) & 0x07)
 	promo := int((raw >> 12) & 0x07)
 
-	from := NewSquare(fromFile, fromRank)
-	to := NewSquare(toFile, toRank)
+	from := types.NewSquare(fromFile, fromRank)
+	to := types.NewSquare(toFile, toRank)
 
 	// Determine flags
 	flags := QuietFlag
 	piece := board.PieceAt(from)
 	target := board.PieceAt(to)
 
-	if target != NoPiece {
+	if target != types.NoPiece {
 		flags = CaptureFlag
 	}
 
 	// Special moves
-	if piece.Type() == Pawn {
+	if piece.Type() == types.Pawn {
 		if to == board.EnPassant {
 			flags = EnPassantFlag
 		} else if int(toRank)-int(fromRank) == 2 || int(fromRank)-int(toRank) == 2 {
 			flags = DoublePawnPush
 		}
-	} else if piece.Type() == King {
+	} else if piece.Type() == types.King {
 		if fromFile-toFile == 2 {
 			flags = QueensideCast
 		} else if toFile-fromFile == 2 {

@@ -2,6 +2,8 @@ package engine
 
 import (
 	"testing"
+
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
 
 // TestMoveGen_StartPos verifies the number of legal moves in the starting position.
@@ -53,7 +55,7 @@ func TestMoveGen_EnPassant(t *testing.T) {
 	foundEP := false
 	for i := 0; i < ml.Count; i++ {
 		if ml.Moves[i].Flags() == EnPassantFlag {
-			if ml.Moves[i].From() == E5 && ml.Moves[i].To() == D6 {
+			if ml.Moves[i].From() == types.E5 && ml.Moves[i].To() == types.D6 {
 				foundEP = true
 				break
 			}
@@ -95,7 +97,7 @@ func TestSEE_Simple(t *testing.T) {
 	// White: Pe4, Black: Pd5, Pe6.
 	// White pawn takes on d5. White wins 100, but then loses 100. SEE = 0.
 	b.SetFEN("rnbqkbnr/pp2pppp/4p3/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 1")
-	move := NewMove(E4, D5, CaptureFlag)
+	move := NewMove(types.E4, types.D5, CaptureFlag)
 	score := b.SEE(move)
 	if score != 0 {
 		t.Errorf("SEE Case 1: Expected 0, got %d", score)
@@ -104,7 +106,7 @@ func TestSEE_Simple(t *testing.T) {
 	// Case 2: Hanging Piece
 	// White Knight on f3 can take hanging Black Pawn on e5
 	b.SetFEN("rnbqkbnr/pppp1ppp/8/4p3/8/5N2/PPPPPPPP/RNBQKB1R w KQkq - 0 1")
-	move = NewMove(F3, E5, CaptureFlag)
+	move = NewMove(types.F3, types.E5, CaptureFlag)
 	score = b.SEE(move)
 	if score < 0 {
 		t.Errorf("SEE Case 2: Expected positive score for hanging piece, got %d", score)
@@ -125,7 +127,7 @@ func TestSEE_Complex(t *testing.T) {
 	// White takes with Knight (White wins 300).
 	// Black takes with Knight (White loses 300).
 	// ... and so on.
-	move := NewMove(D4, D5, CaptureFlag)
+	move := NewMove(types.D4, types.D5, CaptureFlag)
 	score := b.SEE(move)
 
 	// SEE should correctly identify if the exchange is profitable.

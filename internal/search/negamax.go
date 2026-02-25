@@ -6,6 +6,7 @@ import (
 
 	"github.com/Skiddle-Labs/axon-engine/internal/engine"
 	"github.com/Skiddle-Labs/axon-engine/internal/eval"
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
 
 // negamax is the core recursive search function of the engine.
@@ -37,12 +38,12 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 
 	// 2. Transposition Table Probe
 	ttScore, ttMove, found := e.TT.Probe(e.Board.Hash, depth, alpha, beta, ply)
-	if found && excludedMove == engine.NoMove {
+	if found && excludedMove == engine.NoMove && (ply > 0 || len(e.RootExcludedMoves) == 0) {
 		return ttScore
 	}
 
 	// 3. Check detection and extension
-	inCheck := e.Board.IsSquareAttacked(e.Board.Pieces[e.Board.SideToMove][engine.King].LSB(), e.Board.SideToMove^1)
+	inCheck := e.Board.IsSquareAttacked(e.Board.Pieces[e.Board.SideToMove][types.King].LSB(), e.Board.SideToMove^1)
 	if inCheck {
 		depth++
 	}
@@ -144,36 +145,36 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 		pawnExtension := 0
 		if !inCheck && depth > 2 {
 			piece := e.Board.PieceAt(move.From()).Type()
-			if piece == engine.Pawn {
+			if piece == types.Pawn {
 				to := move.To()
 				rank := to.Rank()
-				if (e.Board.SideToMove == engine.White && rank >= 5) ||
-					(e.Board.SideToMove == engine.Black && rank <= 2) {
+				if (e.Board.SideToMove == types.White && rank >= 5) ||
+					(e.Board.SideToMove == types.Black && rank <= 2) {
 					// Check if passed pawn
 					us := e.Board.SideToMove
 					them := us ^ 1
-					enemyPawns := e.Board.Pieces[them][engine.Pawn]
+					enemyPawns := e.Board.Pieces[them][types.Pawn]
 					file := to.File()
 
 					frontMask := engine.Bitboard(0)
-					if us == engine.White {
+					if us == types.White {
 						for r := rank + 1; r <= 7; r++ {
-							frontMask.Set(engine.NewSquare(file, r))
+							frontMask.Set(types.NewSquare(file, r))
 							if file > 0 {
-								frontMask.Set(engine.NewSquare(file-1, r))
+								frontMask.Set(types.NewSquare(file-1, r))
 							}
 							if file < 7 {
-								frontMask.Set(engine.NewSquare(file+1, r))
+								frontMask.Set(types.NewSquare(file+1, r))
 							}
 						}
 					} else {
 						for r := rank - 1; r >= 0; r-- {
-							frontMask.Set(engine.NewSquare(file, r))
+							frontMask.Set(types.NewSquare(file, r))
 							if file > 0 {
-								frontMask.Set(engine.NewSquare(file-1, r))
+								frontMask.Set(types.NewSquare(file-1, r))
 							}
 							if file < 7 {
-								frontMask.Set(engine.NewSquare(file+1, r))
+								frontMask.Set(types.NewSquare(file+1, r))
 							}
 						}
 					}
@@ -199,7 +200,7 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 		}
 
 		// Check if the move resulted in a check
-		givesCheck := e.Board.IsSquareAttacked(e.Board.Pieces[e.Board.SideToMove][engine.King].LSB(), e.Board.SideToMove^1)
+		givesCheck := e.Board.IsSquareAttacked(e.Board.Pieces[e.Board.SideToMove][types.King].LSB(), e.Board.SideToMove^1)
 
 		// Late Move Pruning (LMP)
 		// Prune quiet moves late in the list at low depths.

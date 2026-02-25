@@ -13,6 +13,7 @@ import (
 	"github.com/Skiddle-Labs/axon-engine/internal/eval"
 	"github.com/Skiddle-Labs/axon-engine/internal/logger"
 	"github.com/Skiddle-Labs/axon-engine/internal/search"
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
 
 const startFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -325,7 +326,7 @@ func (p *Protocol) handleGo(parts []string) {
 	} else {
 		myTime := wtime
 		myInc := winc
-		if p.board.SideToMove == engine.Black {
+		if p.board.SideToMove == types.Black {
 			myTime = btime
 			myInc = binc
 		}
@@ -594,21 +595,21 @@ func (p *Protocol) handleEval() {
 	whiteMg, whiteEg := 0, 0
 	blackMg, blackEg := 0, 0
 
-	for pt := engine.Pawn; pt <= engine.Queen; pt++ {
-		wCount := p.board.Pieces[engine.White][pt].Count()
-		bCount := p.board.Pieces[engine.Black][pt].Count()
+	for pt := types.Pawn; pt <= types.Queen; pt++ {
+		wCount := p.board.Pieces[types.White][pt].Count()
+		bCount := p.board.Pieces[types.Black][pt].Count()
 
 		var mg, eg int
 		switch pt {
-		case engine.Pawn:
+		case types.Pawn:
 			mg, eg = eval.PawnMG, eval.PawnEG
-		case engine.Knight:
+		case types.Knight:
 			mg, eg = eval.KnightMG, eval.KnightEG
-		case engine.Bishop:
+		case types.Bishop:
 			mg, eg = eval.BishopMG, eval.BishopEG
-		case engine.Rook:
+		case types.Rook:
 			mg, eg = eval.RookMG, eval.RookEG
-		case engine.Queen:
+		case types.Queen:
 			mg, eg = eval.QueenMG, eval.QueenEG
 		}
 

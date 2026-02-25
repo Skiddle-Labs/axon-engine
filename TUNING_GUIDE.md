@@ -32,7 +32,8 @@ go build -o datagen ./cmd/datagen
 - `-games`: Number of games to play.
 - `-depth`: Search depth for each move (Recommended: 6-10).
 - `-book`: Path to a Polyglot `.bin` book (Critical for variety).
-- `-min-ply`: Start recording after this many plies (Default: 16).
+- `-minply`: Start recording after this many plies (Default: 16).
+- `-adj-score`: Adjudication threshold in centipawns to end games early (Default: 1000).
 
 ---
 
@@ -78,9 +79,10 @@ go run cmd/apply/main.go tuned_params.txt
 ```
 
 This script will:
-1. Parse the 1,700+ values from your results file.
-2. Automatically update the arrays (`MgPST`, `EgPST`, `SafetyTable`) and scalars (`PawnMG`, `PawnStormMG`, etc.) in `internal/eval/params.go`.
-3. Preserve the structure and comments of the source file.
+1. Parse the optimized values from your results file.
+2. Automatically update the arrays (`MgPST`, `EgPST`, `SafetyTable`, `KingAttackerWeight`) and scalars (`PawnMG`, `PawnStormMG`, etc.) in `internal/eval/params.go`.
+3. Correctly handle package-specific type prefixes (e.g., mapping `MgPST[Pawn]` to `types.Pawn`).
+4. Preserve the structure and comments of the source file.
 
 ### Rebuild the Engine
 After applying the parameters, recompile Axon to use the new weights:

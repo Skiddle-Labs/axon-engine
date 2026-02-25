@@ -1,6 +1,10 @@
 package engine
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
+)
 
 // Move represents a chess move.
 // It is encoded as a 16-bit integer:
@@ -25,13 +29,13 @@ const (
 	PromoQueen     uint16 = 0xB000
 )
 
-func NewMove(from, to Square, flags uint16) Move {
+func NewMove(from, to types.Square, flags uint16) Move {
 	return Move(uint16(from) | (uint16(to) << 6) | flags)
 }
 
-func (m Move) From() Square  { return Square(m & 0x3F) }
-func (m Move) To() Square    { return Square((m >> 6) & 0x3F) }
-func (m Move) Flags() uint16 { return uint16(m & 0xF000) }
+func (m Move) From() types.Square { return types.Square(m & 0x3F) }
+func (m Move) To() types.Square   { return types.Square((m >> 6) & 0x3F) }
+func (m Move) Flags() uint16      { return uint16(m & 0xF000) }
 
 func (m Move) String() string {
 	if m == NoMove {

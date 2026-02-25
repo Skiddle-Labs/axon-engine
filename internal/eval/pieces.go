@@ -2,33 +2,34 @@ package eval
 
 import (
 	"github.com/Skiddle-Labs/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
 
 // evaluatePieces calculates the material, mobility, and positional bonuses for all non-pawn pieces.
-func evaluatePieces(b *engine.Board, c engine.Color) (int, int) {
+func evaluatePieces(b *engine.Board, c types.Color) (int, int) {
 	mg, eg := 0, 0
 	them := c ^ 1
 	occ := b.Occupancy()
-	pawns := b.Pieces[c][engine.Pawn]
-	enemyPawns := b.Pieces[them][engine.Pawn]
+	pawns := b.Pieces[c][types.Pawn]
+	enemyPawns := b.Pieces[them][types.Pawn]
 
-	for pt := engine.Knight; pt <= engine.Queen; pt++ {
+	for pt := types.Knight; pt <= types.Queen; pt++ {
 		pieces := b.Pieces[c][pt]
 		for pieces != 0 {
 			sq := pieces.PopLSB()
 
 			// 1. Material Values
 			switch pt {
-			case engine.Knight:
+			case types.Knight:
 				mg += KnightMG
 				eg += KnightEG
-			case engine.Bishop:
+			case types.Bishop:
 				mg += BishopMG
 				eg += BishopEG
-			case engine.Rook:
+			case types.Rook:
 				mg += RookMG
 				eg += RookEG
-			case engine.Queen:
+			case types.Queen:
 				mg += QueenMG
 				eg += QueenEG
 			}
@@ -36,7 +37,7 @@ func evaluatePieces(b *engine.Board, c engine.Color) (int, int) {
 			// 2. Mobility and Positional Features
 			var attacks engine.Bitboard
 			switch pt {
-			case engine.Knight:
+			case types.Knight:
 				attacks = engine.KnightAttacks[sq]
 				mg += attacks.Count() * KnightMobilityMG
 				eg += attacks.Count() * KnightMobilityEG
@@ -44,7 +45,7 @@ func evaluatePieces(b *engine.Board, c engine.Color) (int, int) {
 					mg += KnightOutpostMG
 					eg += KnightOutpostEG
 				}
-			case engine.Bishop:
+			case types.Bishop:
 				attacks = engine.GetBishopAttacks(sq, occ)
 				mg += attacks.Count() * BishopMobilityMG
 				eg += attacks.Count() * BishopMobilityEG
@@ -52,7 +53,7 @@ func evaluatePieces(b *engine.Board, c engine.Color) (int, int) {
 					mg += BishopOutpostMG
 					eg += BishopOutpostEG
 				}
-			case engine.Rook:
+			case types.Rook:
 				attacks = engine.GetRookAttacks(sq, occ)
 				mg += attacks.Count() * RookMobilityMG
 				eg += attacks.Count() * RookMobilityEG
@@ -72,7 +73,7 @@ func evaluatePieces(b *engine.Board, c engine.Color) (int, int) {
 						eg += RookHalfOpenFileEG
 					}
 				}
-			case engine.Queen:
+			case types.Queen:
 				attacks = engine.GetQueenAttacks(sq, occ)
 				mg += attacks.Count() * QueenMobilityMG
 				eg += attacks.Count() * QueenMobilityEG
@@ -81,7 +82,7 @@ func evaluatePieces(b *engine.Board, c engine.Color) (int, int) {
 	}
 
 	// 3. Special Bonuses
-	if b.Pieces[c][engine.Bishop].Count() >= 2 {
+	if b.Pieces[c][types.Bishop].Count() >= 2 {
 		mg += BishopPairMG
 		eg += BishopPairEG
 	}
@@ -90,14 +91,14 @@ func evaluatePieces(b *engine.Board, c engine.Color) (int, int) {
 }
 
 // evaluateThreats detects hanging pieces or pieces attacked by weaker ones.
-func evaluateThreats(b *engine.Board, c engine.Color) (int, int) {
+func evaluateThreats(b *engine.Board, c types.Color) (int, int) {
 	mg, eg := 0, 0
 	them := c ^ 1
 	occ := b.Occupancy()
 	enemyOcc := b.Colors[them]
 	usOcc := b.Colors[c]
 
-	for pt := engine.Pawn; pt <= engine.Queen; pt++ {
+	for pt := types.Pawn; pt <= types.Queen; pt++ {
 		subset := b.Pieces[c][pt]
 		for subset != 0 {
 			sq := subset.PopLSB()
@@ -112,7 +113,7 @@ func evaluateThreats(b *engine.Board, c engine.Color) (int, int) {
 					eg -= engine.PieceValues[pt] / HangingDivisorEG
 				} else {
 					// Attacked by weaker piece
-					for ept := engine.Pawn; ept < pt; ept++ {
+					for ept := types.Pawn; ept < pt; ept++ {
 						if !(enemyAttackers & b.Pieces[them][ept]).IsEmpty() {
 							mg += WeakAttackerMG
 							eg += WeakAttackerEG
@@ -128,7 +129,7 @@ func evaluateThreats(b *engine.Board, c engine.Color) (int, int) {
 }
 
 // isOutpost determines if a piece is on a square supported by a pawn and cannot be chased by enemy pawns.
-func isOutpost(b *engine.Board, c engine.Color, sq engine.Square) bool {
+func isOutpost(b *engine.Board, c types.Color, sq types.Square) bool {
 	rank := sq.Rank()
 	file := sq.File()
 
@@ -137,23 +138,23 @@ func isOutpost(b *engine.Board, c engine.Color, sq engine.Square) bool {
 		return false
 	}
 
-	pawns := b.Pieces[c][engine.Pawn]
-	enemyPawns := b.Pieces[c^1][engine.Pawn]
+	pawns := b.Pieces[c][types.Pawn]
+	enemyPawns := b.Pieces[c^1][types.Pawn]
 
 	// 1. Supported by a pawn
 	supported := false
-	if c == engine.White {
-		if file > 0 && pawns.Test(engine.NewSquare(file-1, rank-1)) {
+	if c == types.White {
+		if file > 0 && pawns.Test(types.NewSquare(file-1, rank-1)) {
 			supported = true
 		}
-		if file < 7 && pawns.Test(engine.NewSquare(file+1, rank-1)) {
+		if file < 7 && pawns.Test(types.NewSquare(file+1, rank-1)) {
 			supported = true
 		}
 	} else {
-		if file > 0 && pawns.Test(engine.NewSquare(file-1, rank+1)) {
+		if file > 0 && pawns.Test(types.NewSquare(file-1, rank+1)) {
 			supported = true
 		}
-		if file < 7 && pawns.Test(engine.NewSquare(file+1, rank+1)) {
+		if file < 7 && pawns.Test(types.NewSquare(file+1, rank+1)) {
 			supported = true
 		}
 	}
@@ -163,21 +164,21 @@ func isOutpost(b *engine.Board, c engine.Color, sq engine.Square) bool {
 	}
 
 	// 2. Cannot be attacked by an enemy pawn
-	if c == engine.White {
+	if c == types.White {
 		for r := rank + 1; r <= 7; r++ {
-			if file > 0 && enemyPawns.Test(engine.NewSquare(file-1, r)) {
+			if file > 0 && enemyPawns.Test(types.NewSquare(file-1, r)) {
 				return false
 			}
-			if file < 7 && enemyPawns.Test(engine.NewSquare(file+1, r)) {
+			if file < 7 && enemyPawns.Test(types.NewSquare(file+1, r)) {
 				return false
 			}
 		}
 	} else {
 		for r := rank - 1; r >= 0; r-- {
-			if file > 0 && enemyPawns.Test(engine.NewSquare(file-1, r)) {
+			if file > 0 && enemyPawns.Test(types.NewSquare(file-1, r)) {
 				return false
 			}
-			if file < 7 && enemyPawns.Test(engine.NewSquare(file+1, r)) {
+			if file < 7 && enemyPawns.Test(types.NewSquare(file+1, r)) {
 				return false
 			}
 		}
