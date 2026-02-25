@@ -17,7 +17,7 @@ This document tracks the planned improvements and current progress of the Axon c
 - [ ] **NNUE Implementation**: Implement a neural network evaluation as a final step while retaining HCE for speed and data generation.
 
 ## 3. Infrastructure & Features (Current Focus)
-- [ ] **Syzygy Tablebase Support**: Implementing real Win-Draw-Loss (WDL) probing for 3-4-5-6 piece endgames.
+
 - [x] **Benchmarking Tool**: Implement a `bench` command for consistent performance measurement across different builds.
 - [x] **Opening Book Support**: Add Polyglot (.bin) support with weighted random and best-move selection strategies.
 - [ ] **Logging System**: Implement structured logging for better debugging in engine-vs-engine matches.

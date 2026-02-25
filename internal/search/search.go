@@ -71,10 +71,19 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 	lastScore := 0
 	stability := 0
 
-	// Syzygy Tablebase Root Probe
-	if wdl, ok := GlobalTB.ProbeWDL(e.Board); ok {
-		score := SyzygyScore(wdl, 0)
-		fmt.Printf("info string Syzygy TB found: wdl %d score %d\n", wdl, score)
+	// Check for legal moves to avoid searching in terminal positions
+	ml := e.Board.GenerateMoves()
+	legalCount := 0
+	for i := 0; i < ml.Count; i++ {
+		if e.Board.MakeMove(ml.Moves[i]) {
+			e.Board.UnmakeMove(ml.Moves[i])
+			legalCount++
+			break
+		}
+	}
+
+	if legalCount == 0 {
+		return engine.NoMove
 	}
 
 	// If SoftLimit is not explicitly set, use 60% of TimeLimit as a default.
@@ -271,13 +280,6 @@ func (e *Engine) negamax(depth, alpha, beta int, excludedMove engine.Move) int {
 
 	if atomic.LoadInt32(e.Stopped) != 0 {
 		return 0
-	}
-
-	// 1. Syzygy Tablebase Probe
-	if excludedMove == engine.NoMove {
-		if wdl, ok := GlobalTB.ProbeWDL(e.Board); ok {
-			return SyzygyScore(wdl, e.Board.Ply)
-		}
 	}
 
 	// 2. TT Probe
@@ -495,11 +497,6 @@ func (e *Engine) quiescence(alpha, beta int) int {
 
 	if atomic.LoadInt32(e.Stopped) != 0 {
 		return 0
-	}
-
-	// Syzygy Tablebase Probe
-	if wdl, ok := GlobalTB.ProbeWDL(e.Board); ok {
-		return SyzygyScore(wdl, e.Board.Ply)
 	}
 
 	// TT Probe

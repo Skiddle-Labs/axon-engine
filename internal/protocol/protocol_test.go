@@ -33,7 +33,6 @@ func TestProtocol_Handshake(t *testing.T) {
 		"option name Book File type string default <none>",
 		"option name Book Best Move type check default false",
 		"option name Book Depth type spin default 255 min 0 max 255",
-		"option name SyzygyPath type string default <none>",
 		"uciok",
 		"readyok",
 	}

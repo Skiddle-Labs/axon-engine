@@ -12,7 +12,6 @@ import (
 	"github.com/personal-github/axon-engine/internal/engine"
 	"github.com/personal-github/axon-engine/internal/eval"
 	"github.com/personal-github/axon-engine/internal/search"
-	"github.com/personal-github/axon-engine/internal/syzygy"
 )
 
 const startFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
@@ -106,7 +105,6 @@ func (p *Protocol) handleUCI() {
 	p.send("option name Book File type string default <none>")
 	p.send("option name Book Best Move type check default false")
 	p.send("option name Book Depth type spin default 255 min 0 max 255")
-	p.send("option name SyzygyPath type string default <none>")
 	p.send("uciok")
 }
 
@@ -197,19 +195,6 @@ func (p *Protocol) handleGo(parts []string) {
 		if move, ok := p.book.GetMove(p.board); ok {
 			p.send(fmt.Sprintf("bestmove %s", move.String()))
 			return
-		}
-	}
-
-	// Probe Syzygy Tablebase at root
-	if search.GlobalTB != nil {
-		if wdl, ok := search.GlobalTB.ProbeWDL(p.board); ok {
-			// If it's a known win/loss/draw, try to get the best move via Lichess API for now.
-			// This provides a "perfect" move at the root without needing 100GB of local DTZ files.
-			if moveStr, ok := syzygy.GetLichessBestMove(p.board); ok {
-				p.send(fmt.Sprintf("info string tablebase result found (WDL: %d)", wdl))
-				p.send(fmt.Sprintf("bestmove %s", moveStr))
-				return
-			}
 		}
 	}
 
@@ -493,15 +478,7 @@ func (p *Protocol) handleSetOption(parts []string) {
 		if v, err := strconv.Atoi(value); err == nil {
 			p.bookDepth = v
 		}
-	} else if name == "syzygypath" {
-		if search.GlobalTB != nil {
-			search.GlobalTB.Close()
-		}
-		if value != "<none>" && value != "" {
-			search.GlobalTB = search.NewTablebase(value)
-		} else {
-			search.GlobalTB = nil
-		}
+	} else if name == "move overhead" {
 	}
 }
 

@@ -20,8 +20,6 @@ Axon is a high-performance, tournament-grade chess engine written in Go (Golang)
 - **Extensions**:
     - **Singular Extensions**: Extends the search for "forced" moves that are significantly better than alternatives.
     - **Check Extensions**: Automatically extends depth when the king is in check.
-- **Tablebase Probing**: Support for **Syzygy Tablebases** (WDL) to ensure perfect play in the endgame.
-
 ### Move Ordering
 - **TT Move**: Prioritizes the best move found in previous search iterations.
 - **MVV-LVA**: Orders captures by Most Valuable Victim and Least Valuable Aggressor.
@@ -66,15 +64,13 @@ Axon can be configured using the `setoption name <Name> value <Value>` command.
     - `setoption name Book File value C:\books\pro.bin`
 - **Book Best Move**: If true, the engine picks the move with highest weight from the book (Default: false).
 - **Book Depth**: Maximum ply count for book usage (Default: 255).
-- **SyzygyPath**: Path to the directory containing **Syzygy Tablebases** (.rtbw files).
-    - `setoption name SyzygyPath value C:\syzygy\3-4-5`
 - **Move Overhead**: Time buffer in ms to account for network/GUI lag (Default: 10).
 - **Slow Mover**: Percentage multiplier for time management (Default: 100).
 - **Clear Hash**: Manually wipe the Transposition Table.
 
 ## Project Structure
 - `/internal/engine`: Bitboards, Move Generation, Book Probing, and Zobrist Hashing.
-- `/internal/search`: PVS logic, Syzygy integration, and Pruning Heuristics.
+- `/internal/search`: PVS logic and Pruning Heuristics.
 - `/internal/eval`: Tapered evaluation, PSTs, and Positional Heuristics.
 - `/cmd/datagen`: Self-play tool for generating tuning data with opening book support.
 - `/cmd/tuner`: Automated evaluation tuning using the Texel Method.
