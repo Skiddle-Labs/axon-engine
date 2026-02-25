@@ -57,16 +57,17 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 	// 5. Reverse Futility Pruning (RFP)
 	// If static evaluation is significantly above beta, we can skip the search.
 	if depth < 5 && !inCheck && excludedMove == engine.NoMove && ply > 0 && beta < MateScore-1000 {
-		margin := depth * 75
+		margin := depth * RFPMargin
 		if staticEval-margin >= beta {
 			return beta
 		}
 	}
 
-	// 6. Internal Iterative Reductions (IIR)
-	// If we don't have a TT move at a high depth, reduce slightly to avoid expensive blind search.
-	if depth >= 3 && ttMove == engine.NoMove && !inCheck && ply > 0 {
-		depth--
+	// 6. Internal Iterative Deepening (IID)
+	// If we don't have a TT move at a high depth, perform a shallow search to find one.
+	if depth >= 5 && ttMove == engine.NoMove && !inCheck && ply > 0 {
+		e.negamax(depth-2, alpha, beta, ply, engine.NoMove)
+		_, ttMove, _ = e.TT.Probe(e.Board.Hash, depth, alpha, beta, ply)
 	}
 
 	// 7. Singular Extensions
@@ -80,12 +81,24 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 		}
 	}
 
-	// 8. Null Move Pruning (NMP)
+	// 8. ProbCut
+	// If we are likely to fail high at a much higher beta, prune the branch.
+	if depth >= 5 && !inCheck && ply > 0 && excludedMove == engine.NoMove && beta < MateScore-1000 {
+		probBeta := beta + 200
+		probDepth := depth - 4
+
+		score := e.negamax(probDepth, probBeta-1, probBeta, ply, engine.NoMove)
+		if score >= probBeta {
+			return beta
+		}
+	}
+
+	// 9. Null Move Pruning (NMP)
 	// If we can afford to skip a move and still fail high, we can prune the branch.
 	if depth >= 3 && !inCheck && ply > 0 && excludedMove == engine.NoMove && e.Board.HasMajorPieces(e.Board.SideToMove) {
 		e.Board.MakeNullMove()
-		// Adaptive Null Move Reduction: R = 3 + depth / 6
-		r := 3 + depth/6
+		// Adaptive Null Move Reduction
+		r := NMPBase + depth/NMPDivisor
 		score := -e.negamax(depth-1-r, -beta, -beta+1, ply+1, engine.NoMove)
 		e.Board.UnmakeNullMove()
 		if score >= beta {
@@ -93,7 +106,7 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 		}
 	}
 
-	// 9. Move Generation and Ordering
+	// 10. Move Generation and Ordering
 	ml := e.Board.GenerateMoves()
 	e.orderMoves(&ml, ttMove, ply)
 
@@ -103,15 +116,83 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 	legalMoves := 0
 	var triedMoves [256]engine.Move
 
-	// 10. Search Loop
+	// 11. Search Loop
 	for i := 0; i < ml.Count; i++ {
 		move := ml.Moves[i]
 		if move == excludedMove {
 			continue
 		}
 
+		// MultiPV check: skip moves already chosen for previous PVs
+		if ply == 0 {
+			isExcluded := false
+			for _, m := range e.RootExcludedMoves {
+				if move == m {
+					isExcluded = true
+					break
+				}
+			}
+			if isExcluded {
+				continue
+			}
+		}
+
 		isCapture := move.Flags()&engine.CaptureFlag != 0
 		isPromotion := move.Flags()&0x8000 != 0
+
+		// Passed Pawn Extension
+		pawnExtension := 0
+		if !inCheck && depth > 2 {
+			piece := e.Board.PieceAt(move.From()).Type()
+			if piece == engine.Pawn {
+				to := move.To()
+				rank := to.Rank()
+				if (e.Board.SideToMove == engine.White && rank >= 5) ||
+					(e.Board.SideToMove == engine.Black && rank <= 2) {
+					// Check if passed pawn
+					us := e.Board.SideToMove
+					them := us ^ 1
+					enemyPawns := e.Board.Pieces[them][engine.Pawn]
+					file := to.File()
+
+					frontMask := engine.Bitboard(0)
+					if us == engine.White {
+						for r := rank + 1; r <= 7; r++ {
+							frontMask.Set(engine.NewSquare(file, r))
+							if file > 0 {
+								frontMask.Set(engine.NewSquare(file-1, r))
+							}
+							if file < 7 {
+								frontMask.Set(engine.NewSquare(file+1, r))
+							}
+						}
+					} else {
+						for r := rank - 1; r >= 0; r-- {
+							frontMask.Set(engine.NewSquare(file, r))
+							if file > 0 {
+								frontMask.Set(engine.NewSquare(file-1, r))
+							}
+							if file < 7 {
+								frontMask.Set(engine.NewSquare(file+1, r))
+							}
+						}
+					}
+
+					if (frontMask & enemyPawns).IsEmpty() {
+						pawnExtension = 1
+					}
+				}
+			}
+		}
+
+		// Static Exchange Evaluation (SEE) pruning
+		// Prune captures that are clearly losing material at low depths.
+		// We avoid pruning moves at the root or moves that might be tactical (promotions/checks).
+		if depth <= 4 && isCapture && legalMoves > 0 && !inCheck && ply > 0 && !isPromotion {
+			if e.Board.SEE(move) < -50*depth {
+				continue
+			}
+		}
 
 		if !e.Board.MakeMove(move) {
 			continue
@@ -130,7 +211,7 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 		// Futility Pruning (FP)
 		// Prune quiet moves if static eval is too far below alpha.
 		if depth <= 3 && !inCheck && legalMoves > 0 && !isCapture && !isPromotion && !givesCheck {
-			margin := depth * 100
+			margin := depth * FPMargin
 			if staticEval+margin < alpha {
 				e.Board.UnmakeMove(move)
 				continue
@@ -143,9 +224,9 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 		var score int
 		if legalMoves == 1 {
 			// Search Principal Variation fully
-			score = -e.negamax(depth-1+extension, -beta, -alpha, ply+1, engine.NoMove)
+			score = -e.negamax(depth-1+extension+pawnExtension, -beta, -alpha, ply+1, engine.NoMove)
 		} else {
-			// 11. Late Move Reduction (LMR)
+			// 12. Late Move Reduction (LMR)
 			// Reduce the search depth for moves that are unlikely to be the best.
 			reduction := 0
 			if depth >= 3 && legalMoves > 4 && !inCheck && !isCapture && !isPromotion {
@@ -164,12 +245,12 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 			}
 
 			// PVS (Principal Variation Search)
-			score = -e.negamax(depth-1-reduction, -(alpha + 1), -alpha, ply+1, engine.NoMove)
+			score = -e.negamax(depth-1-reduction+pawnExtension, -(alpha + 1), -alpha, ply+1, engine.NoMove)
 			if score > alpha && reduction > 0 {
-				score = -e.negamax(depth-1, -(alpha + 1), -alpha, ply+1, engine.NoMove)
+				score = -e.negamax(depth-1+pawnExtension, -(alpha + 1), -alpha, ply+1, engine.NoMove)
 			}
 			if score > alpha && score < beta {
-				score = -e.negamax(depth-1, -beta, -alpha, ply+1, engine.NoMove)
+				score = -e.negamax(depth-1+pawnExtension, -beta, -alpha, ply+1, engine.NoMove)
 			}
 		}
 
@@ -225,7 +306,7 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 		}
 	}
 
-	// 12. Terminal node handling
+	// 13. Terminal node handling
 	if legalMoves == 0 {
 		if inCheck {
 			return -MateScore + ply // Mate
@@ -233,7 +314,7 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 		return 0 // Stalemate
 	}
 
-	// 13. TT Storage
+	// 14. TT Storage
 	if excludedMove == engine.NoMove {
 		flag := ExactFlag
 		if bestScore <= alphaOrig {

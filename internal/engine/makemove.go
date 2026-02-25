@@ -27,6 +27,7 @@ func (b *Board) MakeMove(m Move) bool {
 		Castling:      b.Castling,
 		HalfMoveClock: b.HalfMoveClock,
 		Hash:          b.Hash,
+		PawnHash:      b.PawnHash,
 	}
 
 	movingPiece := b.PieceAt(from)
@@ -34,6 +35,9 @@ func (b *Board) MakeMove(m Move) bool {
 
 	// Update hash for moving piece departure
 	b.Hash ^= PieceKeys[movingPiece][from]
+	if movingType == Pawn {
+		b.PawnHash ^= PieceKeys[movingPiece][from]
+	}
 
 	// Remove current En Passant and Castling from hash
 	if b.EnPassant != NoSquare {
@@ -63,6 +67,9 @@ func (b *Board) MakeMove(m Move) bool {
 		b.Pieces[them][capturedPiece.Type()].Clear(captureSq)
 		b.Colors[them].Clear(captureSq)
 		b.Hash ^= PieceKeys[capturedPiece][captureSq]
+		if capturedPiece.Type() == Pawn {
+			b.PawnHash ^= PieceKeys[capturedPiece][captureSq]
+		}
 		b.HalfMoveClock = 0
 	} else {
 		b.History[b.Ply].CapturedPiece = NoPiece
@@ -92,6 +99,9 @@ func (b *Board) MakeMove(m Move) bool {
 		b.Pieces[us][movingType].Set(to)
 		b.Colors[us].Set(to)
 		b.Hash ^= PieceKeys[movingPiece][to]
+		if movingType == Pawn {
+			b.PawnHash ^= PieceKeys[movingPiece][to]
+		}
 	}
 
 	// 4. Handle special move rules
@@ -176,6 +186,7 @@ func (b *Board) UnmakeMove(m Move) {
 	b.Castling = state.Castling
 	b.HalfMoveClock = state.HalfMoveClock
 	b.Hash = state.Hash
+	b.PawnHash = state.PawnHash
 
 	// 1. Move piece back
 	movingPiece := b.PieceAt(to)
@@ -249,6 +260,7 @@ func (b *Board) MakeNullMove() {
 		Castling:      b.Castling,
 		HalfMoveClock: b.HalfMoveClock,
 		Hash:          b.Hash,
+		PawnHash:      b.PawnHash,
 		CapturedPiece: NoPiece,
 	}
 
@@ -276,6 +288,7 @@ func (b *Board) UnmakeNullMove() {
 	b.Castling = state.Castling
 	b.HalfMoveClock = state.HalfMoveClock
 	b.Hash = state.Hash
+	b.PawnHash = state.PawnHash
 
 	if b.SideToMove == White { // Side that moved was Black
 		b.FullMoveNumber--

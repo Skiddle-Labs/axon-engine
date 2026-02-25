@@ -61,3 +61,22 @@ func (b *Board) ComputeHash() uint64 {
 
 	return h
 }
+
+// ComputePawnHash calculates the Zobrist hash of the current pawn structure from scratch.
+func (b *Board) ComputePawnHash() uint64 {
+	var h uint64
+
+	whitePawns := b.Pieces[White][Pawn]
+	for whitePawns != 0 {
+		sq := whitePawns.PopLSB()
+		h ^= PieceKeys[WhitePawn][sq]
+	}
+
+	blackPawns := b.Pieces[Black][Pawn]
+	for blackPawns != 0 {
+		sq := blackPawns.PopLSB()
+		h ^= PieceKeys[BlackPawn][sq]
+	}
+
+	return h
+}

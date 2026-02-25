@@ -68,7 +68,7 @@ func (tt *TranspositionTable) Store(hash uint64, depth int, score int, flag uint
 	// Note: In a lockless TT, we load the old values first.
 	oldHash := atomic.LoadUint64(&entry.hash)
 	oldData := atomic.LoadUint64(&entry.data)
-	oldDepth := int8(oldData >> 32)
+	oldDepth := uint8(oldData >> 32)
 
 	if oldHash == 0 || oldHash != hash || int(oldDepth) <= depth {
 		// To maintain consistency in a lockless environment:
@@ -106,7 +106,7 @@ func (tt *TranspositionTable) Probe(hash uint64, depth int, alpha, beta int, ply
 	// Unpack data
 	m := engine.Move(eData & 0xFFFF)
 	score := int(int16(eData >> 16))
-	eDepth := int(int8(eData >> 32))
+	eDepth := int(uint8(eData >> 32))
 	flag := uint8(eData >> 40)
 
 	// Adjust mate scores back to be relative to the current search depth

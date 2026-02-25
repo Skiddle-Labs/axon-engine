@@ -19,8 +19,13 @@ The `datagen` tool generates training data by playing games against itself.
 
 ### Usage
 ```bash
+# Windows
 go build -o datagen.exe ./cmd/datagen
 ./datagen.exe -games 10000 -threads 8 -depth 8 -book opening_book.bin -out data.epd
+
+# Linux / macOS
+go build -o datagen ./cmd/datagen
+./datagen -games 10000 -threads 8 -depth 8 -book opening_book.bin -out data.epd
 ```
 
 ### Parameters
@@ -41,8 +46,13 @@ The Axon tuner is a high-performance, multi-threaded tool that optimizes over 1,
 
 ### Build and Run
 ```bash
+# Windows
 go build -o tuner.exe ./cmd/tuner
 ./tuner.exe -file data.epd -method spsa -iterations 5000 -save tuned_params.txt
+
+# Linux / macOS
+go build -o tuner ./cmd/tuner
+./tuner -file data.epd -method spsa -iterations 5000 -save tuned_params.txt
 ```
 
 ### Optimization Methods
@@ -75,7 +85,11 @@ This script will:
 ### Rebuild the Engine
 After applying the parameters, recompile Axon to use the new weights:
 ```bash
+# Windows
 go build -o axon.exe .
+
+# Linux / macOS
+go build -o axon .
 ```
 
 ---
@@ -84,7 +98,8 @@ go build -o axon.exe .
 
 - **Dataset Size**: Aim for at least **500,000 positions** for a full PST tune.
 - **SPSA Iterations**: SPSA is stochastic. If parameters aren't moving enough, increase the `-iterations`.
-- **Validation**: After applying parameters, run the `bench` command to verify the engine still performs as expected: `./axon.exe bench`.
+- **Validation**: After applying parameters, run the `bench` command to verify the engine still performs as expected: `./axon.exe bench` (Windows) or `./axon bench` (Unix).
+- **Pawn Storm Calibration**: When adding new parameters like `PawnStormMG/EG`, run a short SPSA (5k-10k iterations) after applying your main results to calibrate the new weights.
 - **Iterative Improvement**: Tuning is a cycle. Use your new, stronger engine to generate a "higher quality" dataset for the next round of tuning.
 
 ---

@@ -16,6 +16,7 @@ type State struct {
 	HalfMoveClock uint8
 	CapturedPiece Piece
 	Hash          uint64
+	PawnHash      uint64
 }
 
 // Board represents the state of a chess game.
@@ -32,6 +33,7 @@ type Board struct {
 	EnPassant  Square
 	Castling   CastlingRights
 	Hash       uint64
+	PawnHash   uint64
 
 	// History and counters
 	HalfMoveClock  uint8
@@ -208,6 +210,7 @@ func (b *Board) SetFEN(fen string) error {
 	}
 
 	b.Hash = b.ComputeHash()
+	b.PawnHash = b.ComputePawnHash()
 
 	return nil
 }
@@ -321,6 +324,7 @@ func (b *Board) Clear() {
 	b.FullMoveNumber = 1
 	b.Ply = 0
 	b.Hash = 0
+	b.PawnHash = 0
 }
 
 func pieceFromChar(c rune) (Piece, Color, PieceType) {

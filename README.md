@@ -9,6 +9,7 @@ Axon is a high-performance, tournament-grade chess engine written in Go (Golang)
 - **Zobrist Hashing**: Efficient, incremental position hashing for Transposition Table lookups, repetition detection, and Polyglot-compatible book probing.
 - **Precomputed Attacks**: Fast lookup tables for leapers (Kings, Knights) and Ray-casting (Magic Bitboards) for sliding pieces.
 - **SEE (Static Exchange Evaluation)**: Accurately calculates the material balance of capture sequences to prune losing captures.
+- **Pawn Hash Table**: High-speed specialized cache for pawn structure evaluations, significantly boosting search speed (NPS).
 
 ### Search Algorithms
 - **Modular Search Architecture**: Decoupled search logic (Negamax, Ordering, LMR, TT) for high maintainability and performance.
@@ -22,6 +23,10 @@ Axon is a high-performance, tournament-grade chess engine written in Go (Golang)
 - **Extensions**:
     - **Singular Extensions**: Extends the search for "forced" moves that are significantly better than alternatives.
     - **Check Extensions**: Automatically extends depth when the king is in check.
+    - **Passed Pawn Extensions**: Automatically extends the search when a passed pawn reaches the 6th or 7th rank.
+- **Other Search Heuristics**:
+    - **ProbCut**: Aggressive pruning at high depths by searching with a narrow window and reduced depth.
+    - **Internal Iterative Deepening (IID)**: Performs a shallow search to find a candidate move when no Transposition Table move is available.
 
 ### Move Ordering
 - **TT Move**: Prioritizes the best move found in previous search iterations.
@@ -34,6 +39,7 @@ Axon is a high-performance, tournament-grade chess engine written in Go (Golang)
 - **Refined King Safety**: Uses an attacking zone model and non-linear safety tables with piece-specific weighting.
 - **Advanced Pawn Evaluation**: Sophisticated logic for passed pawns, connected structures, and shields.
 - **SPSA & Texel Tuning**: Support for both Local Search and SPSA (Simultaneous Perturbation Stochastic Approximation) for parameter optimization.
+- **Endgame Scaling**: Specialized logic for detecting insufficient material and scaling evaluations in drawish endgames.
 
 ## Getting Started
 
@@ -41,14 +47,23 @@ Axon is a high-performance, tournament-grade chess engine written in Go (Golang)
 ```bash
 git clone https://github.com/Skiddle-Labs/axon-engine.git
 cd axon-engine
+
+# On Windows:
 go build -o axon.exe .
+
+# On Linux or macOS:
+go build -o axon .
 ```
 
 ### Usage
 Axon is a command-line engine. Connect it to a UCI-compatible GUI for the best experience.
 
 ```bash
+# Windows
 ./axon.exe
+
+# Linux or macOS
+./axon
 ```
 
 **Common UCI Commands:**
@@ -63,6 +78,7 @@ Axon can be configured using the `setoption name <Name> value <Value>` command.
 
 - **Hash**: Transposition table size in MB (Default: 64, Max: 65536).
 - **Threads**: Number of search threads (Default: 1, Max: 128).
+- **MultiPV**: Number of best move lines to analyze simultaneously (Default: 1).
 - **Book File**: Path to a **Polyglot (.bin)** opening book.
 - **Book Best Move**: If true, the engine picks the move with the highest weight from the book.
 - **Move Overhead**: Time buffer in ms to account for network/GUI lag (Default: 10).

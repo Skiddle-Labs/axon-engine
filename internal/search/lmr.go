@@ -4,16 +4,24 @@ import "math"
 
 // lmrTable stores precomputed Late Move Reduction values.
 // We use a 64x64 table to cover most practical search depths and move counts.
-var lmrTable [64][64]int
+var (
+	lmrTable   [64][64]int
+	LMRBase    = 0.75
+	LMRDivisor = 2.25
+)
 
 func init() {
+	UpdateLMR(LMRBase, LMRDivisor)
+}
+
+// UpdateLMR recomputes the LMR table with new scaling parameters.
+func UpdateLMR(base, divisor float64) {
+	LMRBase = base
+	LMRDivisor = divisor
 	for d := 1; d < 64; d++ {
 		for i := 1; i < 64; i++ {
 			// Standard LMR formula: R = base + ln(depth) * ln(move_index) / divisor
-			// This formula scales reductions smoothly, ensuring that moves early in the
-			// list or at low depths are reduced less than moves late in the list at
-			// high depths.
-			reduction := 0.75 + math.Log(float64(d))*math.Log(float64(i))/2.25
+			reduction := LMRBase + math.Log(float64(d))*math.Log(float64(i))/LMRDivisor
 			lmrTable[d][i] = int(reduction)
 		}
 	}

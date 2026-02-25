@@ -58,7 +58,8 @@ func TestEvaluate_BishopPair(t *testing.T) {
 	// Position with only two bishops for white
 	b.SetFEN("k7/8/8/8/8/8/8/K1BB4 w - - 0 1")
 
-	mg, eg := evaluateColor(b, engine.White)
+	pmg, peg := evaluatePawnStructure(b, engine.White)
+	mg, eg := evaluateColor(b, engine.White, pmg, peg)
 
 	// mg and eg should include the bishop values + PST + mobility + bishop pair bonus
 	// BishopMG is 365. 365 * 2 = 730. Bishop pair bonus is 30. King PST A1 is -30.
@@ -100,8 +101,10 @@ func TestEvaluate_KingSafety(t *testing.T) {
 	b2 := engine.NewBoard()
 	b2.SetFEN("8/8/8/8/1K6/8/8/8 w - - 0 1") // Exposed
 
-	mg1, _ := evaluateColor(b1, engine.White)
-	mg2, _ := evaluateColor(b2, engine.White)
+	pmg1, peg1 := evaluatePawnStructure(b1, engine.White)
+	mg1, _ := evaluateColor(b1, engine.White, pmg1, peg1)
+	pmg2, peg2 := evaluatePawnStructure(b2, engine.White)
+	mg2, _ := evaluateColor(b2, engine.White, pmg2, peg2)
 
 	if mg1 <= mg2 {
 		t.Errorf("Safe king (MG:%d) should evaluate higher than exposed king (MG:%d)", mg1, mg2)
@@ -113,12 +116,14 @@ func TestEvaluate_Threats(t *testing.T) {
 	// 1. Hanging Piece: White Knight attacked by Black Pawn, no defenders
 	b1 := engine.NewBoard()
 	b1.SetFEN("k7/8/8/3p4/4N3/8/8/K7 w - - 0 1")
-	mg1, eg1 := evaluateColor(b1, engine.White)
+	pmg1, peg1 := evaluatePawnStructure(b1, engine.White)
+	mg1, eg1 := evaluateColor(b1, engine.White, pmg1, peg1)
 
 	// Same position but Knight is not attacked
 	b2 := engine.NewBoard()
 	b2.SetFEN("k7/8/8/8/4N3/8/8/K7 w - - 0 1")
-	mg2, eg2 := evaluateColor(b2, engine.White)
+	pmg2, peg2 := evaluatePawnStructure(b2, engine.White)
+	mg2, eg2 := evaluateColor(b2, engine.White, pmg2, peg2)
 
 	if mg1 >= mg2 {
 		t.Errorf("Hanging piece should be penalized in midgame. mg1:%d, mg2:%d", mg1, mg2)
@@ -130,12 +135,14 @@ func TestEvaluate_Threats(t *testing.T) {
 	// 2. Bad Trade: White Rook defended by Pawn, but attacked by Black Pawn
 	b3 := engine.NewBoard()
 	b3.SetFEN("k7/8/8/3p4/4R3/4P3/8/K7 w - - 0 1")
-	mg3, eg3 := evaluateColor(b3, engine.White)
+	pmg3, peg3 := evaluatePawnStructure(b3, engine.White)
+	mg3, eg3 := evaluateColor(b3, engine.White, pmg3, peg3)
 
 	// Same position but Rook is not attacked
 	b4 := engine.NewBoard()
 	b4.SetFEN("k7/8/8/8/4R3/4P3/8/K7 w - - 0 1")
-	mg4, eg4 := evaluateColor(b4, engine.White)
+	pmg4, peg4 := evaluatePawnStructure(b4, engine.White)
+	mg4, eg4 := evaluateColor(b4, engine.White, pmg4, peg4)
 
 	if mg3 >= mg4 {
 		t.Errorf("Bad trade (Rook vs Pawn) should be penalized in midgame. mg3:%d, mg4:%d", mg3, mg4)

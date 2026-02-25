@@ -116,6 +116,13 @@ func (p *Protocol) handleUCI() {
 	p.send("option name Book Best Move type check default false")
 	p.send("option name Book Depth type spin default 255 min 0 max 255")
 	p.send("option name Log File type string default <none>")
+	p.send("option name Aspiration Delta type spin default 15 min 0 max 500")
+	p.send("option name RFP Margin type spin default 75 min 0 max 1000")
+	p.send("option name FP Margin type spin default 100 min 0 max 1000")
+	p.send("option name NMP Base type spin default 3 min 1 max 10")
+	p.send("option name NMP Divisor type spin default 6 min 1 max 20")
+	p.send("option name LMR Base type spin default 75 min 0 max 500")
+	p.send("option name LMR Divisor type spin default 225 min 10 max 1000")
 	p.send("uciok")
 }
 
@@ -442,6 +449,7 @@ func (p *Protocol) handleUCINewGame() {
 	p.board.Clear()
 	p.board.SetFEN(startFEN)
 	search.GlobalTT.Clear()
+	eval.GlobalPawnTable.Clear()
 
 	// Reset persistent heuristics for a new game
 	p.historyTable = [2][7][64]int{}
@@ -505,6 +513,7 @@ func (p *Protocol) handleSetOption(parts []string) {
 		}
 	} else if name == "clear hash" {
 		search.GlobalTT.Clear()
+		eval.GlobalPawnTable.Clear()
 	} else if name == "uci_analysemode" {
 		p.analyseMode = value == "true"
 	} else if name == "uci_opponent" {
@@ -539,6 +548,34 @@ func (p *Protocol) handleSetOption(parts []string) {
 		} else {
 			logger.SetEnabled(true)
 			logger.Info("Logging enabled to file: %s", value)
+		}
+	} else if name == "aspiration delta" {
+		if v, err := strconv.Atoi(value); err == nil {
+			search.AspirationDelta = v
+		}
+	} else if name == "rfp margin" {
+		if v, err := strconv.Atoi(value); err == nil {
+			search.RFPMargin = v
+		}
+	} else if name == "fp margin" {
+		if v, err := strconv.Atoi(value); err == nil {
+			search.FPMargin = v
+		}
+	} else if name == "nmp base" {
+		if v, err := strconv.Atoi(value); err == nil {
+			search.NMPBase = v
+		}
+	} else if name == "nmp divisor" {
+		if v, err := strconv.Atoi(value); err == nil {
+			search.NMPDivisor = v
+		}
+	} else if name == "lmr base" {
+		if v, err := strconv.Atoi(value); err == nil {
+			search.UpdateLMR(float64(v)/100.0, search.LMRDivisor)
+		}
+	} else if name == "lmr divisor" {
+		if v, err := strconv.Atoi(value); err == nil {
+			search.UpdateLMR(search.LMRBase, float64(v)/100.0)
 		}
 	}
 }
