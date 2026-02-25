@@ -64,7 +64,16 @@ var (
 	RookOpenFileEG     = 10
 	RookHalfOpenFileMG = 10
 	RookHalfOpenFileEG = 5
+	ConnectedPassedMG  = 15
+	ConnectedPassedEG  = 25
+	SpaceMG            = 2
+	TrappedPieceMG     = -50
+	TrappedPieceEG     = -80
 )
+
+// Bishop vs Knight Scaling based on pawn count (0-8 pawns per side)
+var BishopPawnScaling = [9]int{10, 8, 6, 4, 2, 0, -2, -4, -6}
+var KnightPawnScaling = [9]int{-6, -4, -2, 0, 2, 4, 6, 8, 10}
 
 // King Safety Tables and Weights
 var KingAttackerWeight = [7]int{

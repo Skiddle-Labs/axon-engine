@@ -21,6 +21,7 @@ func (b *Board) addPiece(sq types.Square, p types.Piece) {
 	pt := p.Type()
 	b.Pieces[c][pt].Set(sq)
 	b.Colors[c].Set(sq)
+	b.PieceArray[sq] = p
 
 	if nnue.CurrentNetwork == nil {
 		return
@@ -39,6 +40,7 @@ func (b *Board) removePiece(sq types.Square, p types.Piece) {
 	pt := p.Type()
 	b.Pieces[c][pt].Clear(sq)
 	b.Colors[c].Clear(sq)
+	b.PieceArray[sq] = types.NoPiece
 
 	if nnue.CurrentNetwork == nil {
 		return
@@ -81,8 +83,8 @@ func (b *Board) MakeMove(m Move) bool {
 		b.PawnHash ^= PieceKeys[movingPiece][from]
 	}
 
-	// Remove current En Passant and Castling from hash
-	if b.EnPassant != types.NoSquare {
+	// Remove current En Passant from hash if it was capturable
+	if b.hasEnPassantCapture() {
 		b.Hash ^= EnPassantKeys[b.EnPassant.File()]
 	}
 
@@ -150,7 +152,6 @@ func (b *Board) MakeMove(m Move) bool {
 			} else {
 				b.EnPassant = from - 8
 			}
-			b.Hash ^= EnPassantKeys[b.EnPassant.File()]
 		}
 	} else if movingType == types.King {
 		if flags == KingsideCast {
@@ -184,6 +185,11 @@ func (b *Board) MakeMove(m Move) bool {
 	// 6. Update side to move and final bits
 	b.SideToMove = them
 	b.Hash ^= SideKey
+
+	// Add new En Passant to hash if it is capturable by the new side
+	if b.hasEnPassantCapture() {
+		b.Hash ^= EnPassantKeys[b.EnPassant.File()]
+	}
 	if us == types.Black {
 		b.FullMoveNumber++
 	}
@@ -283,7 +289,7 @@ func (b *Board) MakeNullMove() {
 		Accumulators:  b.Accumulators,
 	}
 
-	if b.EnPassant != types.NoSquare {
+	if b.hasEnPassantCapture() {
 		b.Hash ^= EnPassantKeys[b.EnPassant.File()]
 	}
 

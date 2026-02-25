@@ -32,12 +32,12 @@ This document tracks the planned improvements and current progress of the Axon c
     - [x] **SIMD Optimizations**: AVX2 assembly kernels for accumulator updates.
     - [x] **Inference Engine**: SCReLU-based forward pass.
 - [/] **NNUE Training**: Currently generating 1M+ positions for the first model.
-- [ ] **Specialized Endgame Scaling**: Adjust scores for known drawish endings (e.g., Opposite Colored Bishops).
-- [ ] **Trapped Piece Detection**: Penalize pieces with zero mobility or those blocked by their own pawns.
-- [ ] **Connected Passed Pawns**: Bonuses for passed pawns that support each other's advancement.
-- [ ] **Bishop vs. Knight Scaling**: Dynamic adjustment of piece values based on pawn density.
-- [ ] **Space Evaluation**: Positional bonuses for controlling the central four ranks.
-- [ ] **King Ring Attacks**: Precise tactical model focusing on the immediate 8 squares around the king.
+- [x] **Specialized Endgame Scaling**: Adjust scores for known drawish endings (e.g., Opposite Colored Bishops).
+- [x] **Trapped Piece Detection**: Penalize pieces with zero mobility or those blocked by their own pawns.
+- [x] **Connected Passed Pawns**: Bonuses for passed pawns that support each other's advancement.
+- [x] **Bishop vs. Knight Scaling**: Dynamic adjustment of piece values based on pawn density.
+- [x] **Space Evaluation**: Positional bonuses for controlling the central four ranks.
+- [x] **King Ring Attacks**: Precise tactical model focusing on the immediate 8 squares around the king.
 
 ## 3. Infrastructure & Features
 - [x] **Benchmarking Tool**: Internal `bench` command.
@@ -50,9 +50,8 @@ This document tracks the planned improvements and current progress of the Axon c
 ## 4. Optimization & Polish (Current Focus)
 - [x] **Lockless Transposition Table**
 - [x] **Pawn Hash Table**
-- [ ] **Fast FEN Generation**: Buffer-based FEN formatting to boost datagen NPS.
-- [ ] **Tablebase Support**: Integration of Syzygy WDL/DTZ probing.
-- [ ] **En Passant Refinement**: Robustify Zobrist hashing and evaluation (Passed Pawn awareness) for En Passant.
+- [x] **Fast FEN Generation**: Buffer-based FEN formatting to boost datagen NPS.
+- [x] **En Passant Refinement**: Robustify Zobrist hashing and evaluation (Passed Pawn awareness) for En Passant.
 
 ## 5. Advanced Tuning & Calibration
 - [ ] **Log Loss (Cross-Entropy)**: Add support for Log Loss in the tuner to improve NNUE/HCE calibration.
@@ -60,7 +59,7 @@ This document tracks the planned improvements and current progress of the Axon c
 - [ ] **Sigmoid Scaling (K-Factor) Analysis**: Tools to visualize how well the engine's scores match real-world probabilities.
 
 ## 6. Datagen & Dataset Pipeline
-- [ ] **Lock-free Output Buffering**: Minimize mutex contention when writing results from many threads.
+- [x] **Lock-free Output Buffering**: Minimize mutex contention when writing results from many threads.
 - [ ] **SIMD-Accelerated FEN/EPD**: Use SIMD for piece-to-char conversion and string formatting.
 - [ ] **Batch Search**: Optimize search specifically for bulk data generation at low depths.
 - [ ] **Binary Format Support**: Support for `.bin` or `.bullet` formats to eliminate string parsing overhead.

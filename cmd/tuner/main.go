@@ -326,9 +326,9 @@ func RunTuning(entries []PrecomputedEntry, k float64, maxIterations int) {
 			break
 		}
 
-		if iteration%1 == 0 {
+		// Full iteration summary
+		if iteration%10 == 0 {
 			printParams(params, names)
-			saveParams(*saveFile, params, names)
 		}
 		iteration++
 	}
@@ -410,11 +410,7 @@ func getTunableParams() ([]*int, []string) {
 	}
 
 	params = append(params, &eval.VirtualMobilityMG, &eval.VirtualMobilityEG)
-	params = append(params, &eval.KingShieldMissing, &eval.PawnStormMG, &eval.PawnStormEG)
-	names = append(names, "KingShieldMissing", "PawnStormMG", "PawnStormEG")
 	names = append(names, "VirtualMobilityMG", "VirtualMobilityEG")
-	params = append(params, &eval.KingShieldMissing, &eval.PawnStormMG, &eval.PawnStormEG)
-	names = append(names, "KingShieldMissing", "PawnStormMG", "PawnStormEG")
 
 	// Other
 	params = append(params, &eval.BishopPairMG, &eval.BishopPairEG)
@@ -446,8 +442,8 @@ func getTunableParams() ([]*int, []string) {
 	}
 
 	// King Safety
-	params = append(params, &eval.KingShieldClose, &eval.KingShieldFar)
-	names = append(names, "KingShieldClose", "KingShieldFar")
+	params = append(params, &eval.KingShieldClose, &eval.KingShieldFar, &eval.KingShieldMissing)
+	names = append(names, "KingShieldClose", "KingShieldFar", "KingShieldMissing")
 	params = append(params, &eval.PawnStormMG, &eval.PawnStormEG)
 	names = append(names, "PawnStormMG", "PawnStormEG")
 

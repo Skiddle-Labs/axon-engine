@@ -38,6 +38,11 @@ const (
 	ResultLoss GameResult = -1
 )
 
+type GameResultData struct {
+	Positions []string
+	Result    GameResult
+}
+
 func main() {
 	flag.Parse()
 
@@ -87,9 +92,20 @@ func main() {
 	}
 	defer file.Close()
 	writer := bufio.NewWriterSize(file, 1024*1024)
-	defer writer.Flush()
 
 	var wg sync.WaitGroup
+	results := make(chan GameResultData, *numThreads*2)
+	writerDone := make(chan struct{})
+
+	// Dedicated writer goroutine to avoid mutex contention
+	go func() {
+		for res := range results {
+			SaveToDisk(writer, res.Positions, res.Result)
+		}
+		writer.Flush()
+		close(writerDone)
+	}()
+
 	gamesRemaining := int32(*numGames)
 	totalPositions := uint64(0)
 	totalGames := uint64(0)
@@ -116,7 +132,7 @@ func main() {
 
 				positions, result := PlaySingleGame(startFen, book, rng)
 				if len(positions) > 0 {
-					SaveGame(writer, positions, result)
+					results <- GameResultData{Positions: positions, Result: result}
 					atomic.AddUint64(&totalPositions, uint64(len(positions)))
 				}
 
@@ -132,6 +148,8 @@ func main() {
 	}
 
 	wg.Wait()
+	close(results)
+	<-writerDone
 
 	duration := time.Since(startTime).Seconds()
 	posCount := atomic.LoadUint64(&totalPositions)
@@ -264,10 +282,12 @@ func PlaySingleGame(fen string, book *engine.PolyglotBook, rng *rand.Rand) ([]st
 func GetEPDFEN(b *engine.Board) string {
 	var sb strings.Builder
 	sb.Grow(90)
+
+	// 1. Piece placement
 	for r := 7; r >= 0; r-- {
 		empty := 0
 		for f := 0; f < 8; f++ {
-			p := b.PieceAt(types.NewSquare(f, r))
+			p := b.PieceAt(types.Square(r<<3 | f))
 			if p == types.NoPiece {
 				empty++
 			} else {
@@ -286,6 +306,7 @@ func GetEPDFEN(b *engine.Board) string {
 		}
 	}
 
+	// 2. Side to move
 	sb.WriteByte(' ')
 	if b.SideToMove == types.White {
 		sb.WriteByte('w')
@@ -293,6 +314,7 @@ func GetEPDFEN(b *engine.Board) string {
 		sb.WriteByte('b')
 	}
 
+	// 3. Castling rights
 	sb.WriteByte(' ')
 	if b.Castling == 0 {
 		sb.WriteByte('-')
@@ -311,13 +333,14 @@ func GetEPDFEN(b *engine.Board) string {
 		}
 	}
 
+	// 4. En passant square
 	sb.WriteByte(' ')
 	if b.EnPassant == types.NoSquare {
 		sb.WriteByte('-')
 	} else {
 		sq := b.EnPassant
-		sb.WriteByte(byte('a' + sq.File()))
-		sb.WriteByte(byte('1' + sq.Rank()))
+		sb.WriteByte(byte('a' + (sq & 7)))
+		sb.WriteByte(byte('1' + (sq >> 3)))
 	}
 
 	return sb.String()
@@ -328,12 +351,7 @@ func GetPieceChar(p types.Piece) string {
 	return string(chars[int(p)])
 }
 
-var fileMutex sync.Mutex
-
-func SaveGame(writer *bufio.Writer, positions []string, result GameResult) {
-	fileMutex.Lock()
-	defer fileMutex.Unlock()
-
+func SaveToDisk(writer *bufio.Writer, positions []string, result GameResult) {
 	resStr := " [0.5]\n"
 	if result == ResultWin {
 		resStr = " [1.0]\n"
@@ -345,5 +363,4 @@ func SaveGame(writer *bufio.Writer, positions []string, result GameResult) {
 		writer.WriteString(fen)
 		writer.WriteString(resStr)
 	}
-	writer.Flush()
 }

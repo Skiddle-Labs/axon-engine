@@ -58,8 +58,10 @@ func (b *Board) ComputeHash() uint64 {
 	// XOR castling rights
 	h ^= CastlingKeys[b.Castling]
 
-	// XOR en passant file
-	if b.EnPassant != types.NoSquare {
+	// XOR en passant file - only if a capture is possible
+	// This reduces hash collisions by ensuring identical positions without EP capture
+	// capability result in the same hash.
+	if b.hasEnPassantCapture() {
 		h ^= EnPassantKeys[b.EnPassant.File()]
 	}
 

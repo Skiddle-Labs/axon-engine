@@ -5,6 +5,16 @@ This guide describes how to train a neural network for the Axon chess engine usi
 ## 1. Data Collection
 Use the `datagen` tool to collect at least 1,000,000 positions. For a high-strength network, 10M+ positions are recommended.
 
+### Build and Run (Linux/MacOS)
+```bash
+# Build the datagen tool
+go build -o datagen ./cmd/datagen
+
+# Run datagen
+./datagen -games 100000 -threads 8 -depth 6 -out training_data.epd
+```
+
+### Run (Windows)
 ```bash
 ./datagen.exe -games 100000 -threads 8 -depth 6 -out training_data.epd
 ```

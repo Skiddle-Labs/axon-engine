@@ -138,7 +138,25 @@ func evaluatePawns(b *engine.Board, c types.Color) (int, int) {
 			}
 		}
 
-		if (frontMask & enemyPawns).IsEmpty() {
+		isPassed := (frontMask & enemyPawns).IsEmpty()
+
+		// En Passant Awareness: If this pawn just jumped over an enemy pawn's attack square,
+		// it can be captured EP, so it's not "safely" passed yet.
+		if isPassed && b.EnPassant != types.NoSquare {
+			if c == types.White && rank == 3 && b.EnPassant == types.NewSquare(file, 2) {
+				if (file > 0 && enemyPawns.Test(types.NewSquare(file-1, 3))) ||
+					(file < 7 && enemyPawns.Test(types.NewSquare(file+1, 3))) {
+					isPassed = false
+				}
+			} else if c == types.Black && rank == 4 && b.EnPassant == types.NewSquare(file, 5) {
+				if (file > 0 && enemyPawns.Test(types.NewSquare(file-1, 4))) ||
+					(file < 7 && enemyPawns.Test(types.NewSquare(file+1, 4))) {
+					isPassed = false
+				}
+			}
+		}
+
+		if isPassed {
 			bonus := 0
 			if c == types.White {
 				bonus = rank * rank
@@ -147,6 +165,12 @@ func evaluatePawns(b *engine.Board, c types.Color) (int, int) {
 			}
 			mg += bonus * PawnPassedMG
 			eg += bonus * PawnPassedEG
+
+			// 6. Connected passed pawns
+			if supported || phalanx {
+				mg += ConnectedPassedMG
+				eg += ConnectedPassedEG
+			}
 		}
 	}
 

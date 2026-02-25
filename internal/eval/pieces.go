@@ -42,8 +42,14 @@ func evaluatePieces(b *engine.Board, c types.Color) (int, int) {
 			case types.Knight:
 				attacks = engine.KnightAttacks[sq]
 				mobility = attacks & ^b.Colors[c]
-				mg += KnightMobilityMG[mobility.Count()]
-				eg += KnightMobilityEG[mobility.Count()]
+				mobilityCount := mobility.Count()
+				mg += KnightMobilityMG[mobilityCount]
+				eg += KnightMobilityEG[mobilityCount]
+
+				if mobilityCount == 0 {
+					mg += TrappedPieceMG
+					eg += TrappedPieceEG
+				}
 
 				// Virtual mobility (pressure on occupied squares)
 				virtual := (attacks & b.Occupancy()).Count()
@@ -57,8 +63,14 @@ func evaluatePieces(b *engine.Board, c types.Color) (int, int) {
 			case types.Bishop:
 				attacks = engine.GetBishopAttacks(sq, occ)
 				mobility = attacks & ^b.Colors[c]
-				mg += BishopMobilityMG[mobility.Count()]
-				eg += BishopMobilityEG[mobility.Count()]
+				mobilityCount := mobility.Count()
+				mg += BishopMobilityMG[mobilityCount]
+				eg += BishopMobilityEG[mobilityCount]
+
+				if mobilityCount == 0 {
+					mg += TrappedPieceMG
+					eg += TrappedPieceEG
+				}
 
 				virtual := (attacks & b.Occupancy()).Count()
 				mg += virtual * VirtualMobilityMG
@@ -71,8 +83,14 @@ func evaluatePieces(b *engine.Board, c types.Color) (int, int) {
 			case types.Rook:
 				attacks = engine.GetRookAttacks(sq, occ)
 				mobility = attacks & ^b.Colors[c]
-				mg += RookMobilityMG[mobility.Count()]
-				eg += RookMobilityEG[mobility.Count()]
+				mobilityCount := mobility.Count()
+				mg += RookMobilityMG[mobilityCount]
+				eg += RookMobilityEG[mobilityCount]
+
+				if mobilityCount == 0 {
+					mg += TrappedPieceMG
+					eg += TrappedPieceEG
+				}
 
 				virtual := (attacks & b.Occupancy()).Count()
 				mg += virtual * VirtualMobilityMG
@@ -96,8 +114,14 @@ func evaluatePieces(b *engine.Board, c types.Color) (int, int) {
 			case types.Queen:
 				attacks = engine.GetQueenAttacks(sq, occ)
 				mobility = attacks & ^b.Colors[c]
-				mg += QueenMobilityMG[mobility.Count()]
-				eg += QueenMobilityEG[mobility.Count()]
+				mobilityCount := mobility.Count()
+				mg += QueenMobilityMG[mobilityCount]
+				eg += QueenMobilityEG[mobilityCount]
+
+				if mobilityCount == 0 {
+					mg += TrappedPieceMG
+					eg += TrappedPieceEG
+				}
 
 				virtual := (attacks & b.Occupancy()).Count()
 				mg += virtual * VirtualMobilityMG

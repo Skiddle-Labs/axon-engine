@@ -1,7 +1,5 @@
 package types
 
-import "fmt"
-
 // NNUE Architecture Constants
 const (
 	// InputFeatures represents the total number of input features (64 squares * 12 piece types)
@@ -188,7 +186,7 @@ func (s Square) String() string {
 	if s < A1 || s >= NoSquare {
 		return "-"
 	}
-	return fmt.Sprintf("%c%c", 'a'+s.File(), '1'+s.Rank())
+	return string([]byte{byte('a' + s.File()), byte('1' + s.Rank())})
 }
 
 // NewSquare returns a Square from file and rank.

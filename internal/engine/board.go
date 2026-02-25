@@ -33,6 +33,9 @@ type Board struct {
 	// Combined bitboards for convenience
 	Colors [2]Bitboard
 
+	// Mailbox for O(1) lookups
+	PieceArray [64]types.Piece
+
 	// Game state variables
 	SideToMove types.Color
 	EnPassant  types.Square
@@ -83,17 +86,7 @@ func (b *Board) HasMajorPieces(c types.Color) bool {
 
 // PieceAt returns the piece at the given square.
 func (b *Board) PieceAt(s types.Square) types.Piece {
-	for c := types.White; c <= types.Black; c++ {
-		if !b.Colors[c].Test(s) {
-			continue
-		}
-		for pt := types.Pawn; pt <= types.King; pt++ {
-			if b.Pieces[c][pt].Test(s) {
-				return makePiece(c, pt)
-			}
-		}
-	}
-	return types.NoPiece
+	return b.PieceArray[s]
 }
 
 func (b *Board) String() string {
@@ -164,6 +157,7 @@ func (b *Board) SetFEN(fen string) error {
 			sq := types.NewSquare(file, rank)
 			b.Pieces[color][pt].Set(sq)
 			b.Colors[color].Set(sq)
+			b.PieceArray[sq] = piece
 			file++
 		}
 	}
@@ -227,54 +221,28 @@ func (b *Board) SetFEN(fen string) error {
 // FEN returns the FEN string representing the current board state.
 func (b *Board) FEN() string {
 	var sb strings.Builder
+	sb.Grow(90)
 
 	// 1. Piece placement
 	for r := 7; r >= 0; r-- {
 		empty := 0
 		for f := 0; f < 8; f++ {
-			p := b.PieceAt(types.NewSquare(f, r))
+			p := b.PieceArray[r*8+f]
 			if p == types.NoPiece {
 				empty++
 			} else {
 				if empty > 0 {
-					sb.WriteString(strconv.Itoa(empty))
+					sb.WriteByte(byte('0' + empty))
 					empty = 0
 				}
-				char := ""
-				switch p {
-				case types.WhitePawn:
-					char = "P"
-				case types.WhiteKnight:
-					char = "N"
-				case types.WhiteBishop:
-					char = "B"
-				case types.WhiteRook:
-					char = "R"
-				case types.WhiteQueen:
-					char = "Q"
-				case types.WhiteKing:
-					char = "K"
-				case types.BlackPawn:
-					char = "p"
-				case types.BlackKnight:
-					char = "n"
-				case types.BlackBishop:
-					char = "b"
-				case types.BlackRook:
-					char = "r"
-				case types.BlackQueen:
-					char = "q"
-				case types.BlackKing:
-					char = "k"
-				}
-				sb.WriteString(char)
+				sb.WriteByte(".PNBRQKpnbrqk"[p])
 			}
 		}
 		if empty > 0 {
-			sb.WriteString(strconv.Itoa(empty))
+			sb.WriteByte(byte('0' + empty))
 		}
 		if r > 0 {
-			sb.WriteString("/")
+			sb.WriteByte('/')
 		}
 	}
 
@@ -287,45 +255,95 @@ func (b *Board) FEN() string {
 
 	// 3. Castling rights
 	if b.Castling == 0 {
-		sb.WriteString("-")
+		sb.WriteByte('-')
 	} else {
 		if b.Castling&WhiteKingside != 0 {
-			sb.WriteString("K")
+			sb.WriteByte('K')
 		}
 		if b.Castling&WhiteQueenside != 0 {
-			sb.WriteString("Q")
+			sb.WriteByte('Q')
 		}
 		if b.Castling&BlackKingside != 0 {
-			sb.WriteString("k")
+			sb.WriteByte('k')
 		}
 		if b.Castling&BlackQueenside != 0 {
-			sb.WriteString("q")
+			sb.WriteByte('q')
 		}
 	}
 
 	// 4. En passant square
-	sb.WriteString(" ")
+	sb.WriteByte(' ')
 	if b.EnPassant == types.NoSquare {
-		sb.WriteString("-")
+		sb.WriteByte('-')
 	} else {
-		sb.WriteString(b.EnPassant.String())
+		sb.WriteByte(byte('a' + (b.EnPassant & 7)))
+		sb.WriteByte(byte('1' + (b.EnPassant >> 3)))
 	}
 
 	// 5. Halfmove clock
-	sb.WriteString(" ")
+	sb.WriteByte(' ')
 	sb.WriteString(strconv.Itoa(int(b.HalfMoveClock)))
 
 	// 6. Fullmove number
-	sb.WriteString(" ")
+	sb.WriteByte(' ')
 	sb.WriteString(strconv.Itoa(int(b.FullMoveNumber)))
 
 	return sb.String()
 }
 
 // Clear resets the board to an empty state.
+// hasEnPassantCapture returns true if the current side to move can capture en passant.
+// This is used to ensure the Zobrist hash only includes the en passant file when a
+// capture is actually possible, reducing hash collisions.
+func (b *Board) hasEnPassantCapture() bool {
+	if b.EnPassant == types.NoSquare {
+		return false
+	}
+
+	us := b.SideToMove
+	pawns := b.Pieces[us][types.Pawn]
+	epFile := b.EnPassant.File()
+
+	if us == types.White {
+		// White EP capture happens from rank 4 (index 4) to rank 5.
+		// Only pawns on rank 4 can capture EP.
+		rank4 := Bitboard(0xFF << 32)
+		candidates := pawns & rank4
+		if candidates == 0 {
+			return false
+		}
+
+		// Check if any pawn on rank 4 is adjacent to the EP file.
+		if epFile > 0 && candidates.Test(types.NewSquare(epFile-1, 4)) {
+			return true
+		}
+		if epFile < 7 && candidates.Test(types.NewSquare(epFile+1, 4)) {
+			return true
+		}
+	} else {
+		// Black EP capture happens from rank 3 (index 3) to rank 2.
+		rank3 := Bitboard(0xFF << 24)
+		candidates := pawns & rank3
+		if candidates == 0 {
+			return false
+		}
+
+		if epFile > 0 && candidates.Test(types.NewSquare(epFile-1, 3)) {
+			return true
+		}
+		if epFile < 7 && candidates.Test(types.NewSquare(epFile+1, 3)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// Clear resets the board to an empty state.
 func (b *Board) Clear() {
 	b.Pieces = [2][7]Bitboard{}
 	b.Colors = [2]Bitboard{}
+	b.PieceArray = [64]types.Piece{}
 	b.SideToMove = types.White
 	b.EnPassant = types.NoSquare
 	b.Castling = 0

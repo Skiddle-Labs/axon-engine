@@ -40,11 +40,7 @@ func Evaluate(b *engine.Board) int {
 	score := (mgScore*mgW + egScore*egW) / TotalPhase
 
 	// Scale evaluation in drawish endgames
-	if score > 0 && b.Pieces[types.White][types.Pawn] == 0 {
-		score = score * 3 / 4
-	} else if score < 0 && b.Pieces[types.Black][types.Pawn] == 0 {
-		score = score * 3 / 4
-	}
+	score = scaleEndgame(b, score)
 
 	if b.SideToMove == types.Black {
 		return -score
@@ -100,6 +96,21 @@ func evaluateColor(b *engine.Board, c types.Color, pMg, pEg int) (int, int) {
 	mg += tmg
 	eg += teg
 
+	// 6. Space Evaluation
+	mg += evaluateSpace(b, c)
+
+	// 7. Bishop vs Knight Scaling
+	numPawns := b.Pieces[c][types.Pawn].Count()
+	if numPawns > 8 {
+		numPawns = 8
+	}
+	numBishops := b.Pieces[c][types.Bishop].Count()
+	numKnights := b.Pieces[c][types.Knight].Count()
+	mg += numBishops * BishopPawnScaling[numPawns]
+	eg += numBishops * BishopPawnScaling[numPawns]
+	mg += numKnights * KnightPawnScaling[numPawns]
+	eg += numKnights * KnightPawnScaling[numPawns]
+
 	return mg, eg
 }
 
@@ -117,6 +128,42 @@ func evaluatePawnStructure(b *engine.Board, c types.Color) (int, int) {
 
 	pmg, peg := evaluatePawns(b, c)
 	return mg + pmg, eg + peg
+}
+
+// evaluateSpace rewards controlling the central ranks.
+func evaluateSpace(b *engine.Board, c types.Color) int {
+	score := 0
+	them := c ^ 1
+	enemyPawnAttacks := engine.Bitboard(0)
+
+	enemyPawns := b.Pieces[them][types.Pawn]
+	if them == types.White {
+		// White pawn attacks
+		enemyPawnAttacks |= (enemyPawns & ^engine.FileA) << 7
+		enemyPawnAttacks |= (enemyPawns & ^engine.FileH) << 9
+	} else {
+		// Black pawn attacks
+		enemyPawnAttacks |= (enemyPawns & ^engine.FileA) >> 9
+		enemyPawnAttacks |= (enemyPawns & ^engine.FileH) >> 7
+	}
+
+	// Space region: ranks 2, 3, 4 for White; 7, 6, 5 for Black.
+	// We count squares that are not attacked by enemy pawns.
+	var spaceMask engine.Bitboard
+	if c == types.White {
+		spaceMask = engine.Rank2 | engine.Rank3 | engine.Rank4
+	} else {
+		spaceMask = engine.Rank7 | engine.Rank6 | engine.Rank5
+	}
+
+	// Filter by central files
+	spaceMask &= (engine.FileC | engine.FileD | engine.FileE | engine.FileF)
+
+	// Count squares in spaceMask not attacked by enemy pawns
+	safeSpace := spaceMask & ^enemyPawnAttacks
+	score = safeSpace.Count() * SpaceMG
+
+	return score
 }
 
 // getPST maps a square to its value in the Piece-Square Table.
@@ -161,4 +208,48 @@ func isInsufficientMaterial(b *engine.Board) bool {
 	}
 
 	return false
+}
+
+// scaleEndgame adjusts the evaluation for known drawish or favorable endgame patterns.
+func scaleEndgame(b *engine.Board, score int) int {
+	// 1. Basic scaling for pawnless endgames
+	if score > 0 && b.Pieces[types.White][types.Pawn] == 0 {
+		score = score * 3 / 4
+	} else if score < 0 && b.Pieces[types.Black][types.Pawn] == 0 {
+		score = score * 3 / 4
+	}
+
+	// 2. Opposite Colored Bishops
+	if isOppositeBishops(b) {
+		// In pure OCB endgames with few pawns, drawishness is very high.
+		numPawns := b.Pieces[types.White][types.Pawn].Count() + b.Pieces[types.Black][types.Pawn].Count()
+		if numPawns <= 2 {
+			score /= 2
+		} else if numPawns <= 4 {
+			score = score * 3 / 4
+		}
+	}
+
+	return score
+}
+
+// isOppositeBishops returns true if both sides have exactly one bishop and they are on different colors.
+func isOppositeBishops(b *engine.Board) bool {
+	if b.Pieces[types.White][types.Bishop].Count() != 1 || b.Pieces[types.Black][types.Bishop].Count() != 1 {
+		return false
+	}
+
+	if b.Pieces[types.White][types.Knight] != 0 || b.Pieces[types.Black][types.Knight] != 0 ||
+		b.Pieces[types.White][types.Rook] != 0 || b.Pieces[types.Black][types.Rook] != 0 ||
+		b.Pieces[types.White][types.Queen] != 0 || b.Pieces[types.Black][types.Queen] != 0 {
+		return false
+	}
+
+	wSq := b.Pieces[types.White][types.Bishop].LSB()
+	bSq := b.Pieces[types.Black][types.Bishop].LSB()
+
+	wColor := (int(wSq/8) + int(wSq%8)) & 1
+	bColor := (int(bSq/8) + int(bSq%8)) & 1
+
+	return wColor != bColor
 }
