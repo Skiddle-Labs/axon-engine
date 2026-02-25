@@ -4,7 +4,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Skiddle-Labs/axon-engine/internal/protocol"
+	"github.com/Skiddle-Labs/axon-engine/internal/protocol/uci"
 )
 
 func main() {
@@ -13,12 +13,12 @@ func main() {
 	if len(os.Args) > 1 {
 		command := strings.Join(os.Args[1:], " ")
 		input := strings.NewReader(command + "\nquit\n")
-		p := protocol.NewProtocol(input, os.Stdout)
+		p := uci.NewUCI(input, os.Stdout)
 		p.Start()
 		return
 	}
 
 	// Default mode: start the UCI protocol loop reading from standard input.
-	p := protocol.NewProtocol(os.Stdin, os.Stdout)
+	p := uci.NewUCI(os.Stdin, os.Stdout)
 	p.Start()
 }

@@ -10,6 +10,8 @@ import (
 
 type CastlingRights uint8
 
+const StartFEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+
 // State represents the irreversible state of the board, used for unmaking moves.
 type State struct {
 	Move          Move

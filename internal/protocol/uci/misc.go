@@ -1,0 +1,56 @@
+package uci
+
+import (
+	"fmt"
+	"strconv"
+	"sync/atomic"
+	"time"
+
+	"github.com/Skiddle-Labs/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/eval"
+	"github.com/Skiddle-Labs/axon-engine/internal/search"
+)
+
+func (u *UCI) handleIsReady() {
+	u.send("readyok")
+}
+
+func (u *UCI) handleUCINewGame() {
+	if u.engine != nil {
+		atomic.StoreInt32(u.engine.Stopped, 1)
+	}
+	search.GlobalTT.Clear()
+	u.board = engine.NewBoard()
+	u.historyTable = [2][7][64]int{}
+	u.counterMoves = [64][64]engine.Move{}
+}
+
+func (u *UCI) handleEval() {
+	score := eval.Evaluate(u.board)
+	u.send(fmt.Sprintf("Evaluation: %d", score))
+}
+
+func (u *UCI) handleBench(fields []string) {
+	depth := 10
+	if len(fields) > 1 {
+		if d, err := strconv.Atoi(fields[1]); err == nil {
+			depth = d
+		}
+	}
+
+	u.board.SetFEN(engine.StartFEN)
+	eng := search.NewEngine(u.board)
+	eng.Silent = true
+
+	start := time.Now()
+	eng.Search(depth)
+	elapsed := time.Since(start)
+
+	nodes := atomic.LoadUint64(eng.Nodes)
+	nps := uint64(0)
+	if elapsed.Seconds() > 0.001 {
+		nps = uint64(float64(nodes) / elapsed.Seconds())
+	}
+
+	u.send(fmt.Sprintf("Bench: %d nodes, %d nps, %v time", nodes, nps, elapsed))
+}
