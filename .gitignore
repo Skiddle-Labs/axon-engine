@@ -8,8 +8,6 @@
 *.so
 *.dylib
 axon-engine
-datagen
-tuner
 
 # Output of 'go build'
 /axon

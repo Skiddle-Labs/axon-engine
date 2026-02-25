@@ -22,6 +22,10 @@ The `datagen` tool generates training data by playing games against itself.
 # Windows
 go build -o datagen.exe ./cmd/datagen
 ./datagen.exe -games 100000 -threads 8 -depth 6 -out training_data.epd
+
+# Linux
+go build -o datagen ./cmd/datagen
+./datagen -games 100000 -threads 8 -depth 6 -out training_data.epd
 ```
 
 ### Tips for Datagen
@@ -45,6 +49,10 @@ The Axon tuner is a high-performance, multi-threaded tool that optimizes hundred
 # Windows
 go build -o tuner.exe ./cmd/tuner
 ./tuner.exe -file training_data.epd -method spsa -iterations 5000 -save tuned_params.txt
+
+# Linux
+go build -o tuner ./cmd/tuner
+./tuner -file training_data.epd -method spsa -iterations 5000 -save tuned_params.txt
 ```
 
 ### Optimization Methods
@@ -69,7 +77,11 @@ This script handles:
 
 ### Rebuild the Engine
 ```bash
+# Windows
 go build -o axon.exe .
+
+# Linux
+go build -o axon .
 ```
 
 ---
