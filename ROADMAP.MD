@@ -60,14 +60,14 @@ This document tracks the planned improvements and current progress of the Axon c
 
 ## 6. Datagen & Dataset Pipeline
 - [x] **Lock-free Output Buffering**: Minimize mutex contention when writing results from many threads.
-- [ ] **SIMD-Accelerated FEN/EPD**: Use SIMD for piece-to-char conversion and string formatting.
+- [x] **SIMD-Accelerated FEN/EPD**: Use SIMD for piece-to-char conversion and string formatting.
 - [ ] **Batch Search**: Optimize search specifically for bulk data generation at low depths.
 - [ ] **Binary Format Support**: Support for `.bin` or `.bullet` formats to eliminate string parsing overhead.
 
 ## 7. Testing & Quality Assurance
 - [ ] **SPRT Framework**: Integrated Sequential Probability Ratio Testing for ELO validation.
 - [ ] **Regression Suites**: Automated testing against previous releases.
-- [ ] **UCI Option Support**: Expose search knobs via UCI for easier tuning.
+- [x] **UCI Option Support**: Expose search knobs via UCI for easier tuning.
 
 ## 8. Advanced Search & Optimization
 - [ ] **Multi-Cut Pruning**: Prune nodes if multiple moves fail high at reduced depth.
@@ -76,7 +76,7 @@ This document tracks the planned improvements and current progress of the Axon c
 - [ ] **Double Extensions**: Detect and extend search for extremely critical tactical lines.
 - [ ] **Internal Iterative Reductions (IIR)**: Reduce search depth when no TT move is available.
 - [ ] **History-Based LMR**: Scale move reductions based on historical success/failure of moves.
-- [ ] **Correction History**: Learn and apply systematic errors in static evaluation during search.
+- [x] **Correction History**: Learn and apply systematic errors in static evaluation during search.
 - [ ] **Capture History**: Use historical capture success to improve move ordering in Quiescence search.
 
 ## 9. Development & Support Tooling

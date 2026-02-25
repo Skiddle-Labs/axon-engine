@@ -53,7 +53,7 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 		return e.quiescence(alpha, beta, ply)
 	}
 
-	staticEval := eval.Evaluate(e.Board)
+	staticEval := e.ApplyCorrection(eval.Evaluate(e.Board))
 
 	// 5. Reverse Futility Pruning (RFP)
 	// If static evaluation is significantly above beta, we can skip the search.
@@ -317,6 +317,11 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 
 	// 14. TT Storage
 	if excludedMove == engine.NoMove {
+		// Update Correction History for non-mate scores
+		if !inCheck && bestScore > -MateScore+1000 && bestScore < MateScore-1000 {
+			e.UpdateCorrection(depth, bestScore, staticEval)
+		}
+
 		flag := ExactFlag
 		if bestScore <= alphaOrig {
 			flag = AlphaFlag

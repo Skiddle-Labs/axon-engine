@@ -29,6 +29,8 @@ func (u *UCI) handleUCI() {
 	u.send("option name FP_Margin type spin default 100 min 0 max 5000")
 	u.send("option name NMP_Base type spin default 3 min 1 max 10")
 	u.send("option name NMP_Divisor type spin default 6 min 1 max 20")
+	u.send("option name LMR_Base type spin default 75 min 0 max 500")
+	u.send("option name LMR_Multiplier type spin default 225 min 0 max 1000")
 
 	u.send("uciok")
 }
@@ -117,6 +119,16 @@ func (u *UCI) handleSetOption(fields []string) {
 	case "nmp_divisor":
 		if v, err := strconv.Atoi(value); err == nil {
 			search.NMPDivisor = v
+		}
+	case "lmr_base":
+		if v, err := strconv.Atoi(value); err == nil {
+			search.LMR_Base = float64(v) / 100.0
+			search.UpdateLMR(search.LMR_Base, search.LMR_Multiplier)
+		}
+	case "lmr_multiplier":
+		if v, err := strconv.Atoi(value); err == nil {
+			search.LMR_Multiplier = float64(v) / 100.0
+			search.UpdateLMR(search.LMR_Base, search.LMR_Multiplier)
 		}
 	}
 }

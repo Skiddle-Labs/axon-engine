@@ -25,6 +25,8 @@ var (
 	FPMargin        = 100
 	NMPBase         = 3
 	NMPDivisor      = 6
+	LMR_Base        = 0.75
+	LMR_Multiplier  = 2.25
 )
 
 // Engine represents a search instance.
@@ -49,10 +51,11 @@ type Engine struct {
 	LastDepthScore  int
 	LastDepthMove   engine.Move
 
-	localNodes   uint64
-	KillerMoves  [128][2]engine.Move
-	HistoryTable *[2][7][64]int
-	CounterMoves *[64][64]engine.Move
+	localNodes      uint64
+	KillerMoves     [128][2]engine.Move
+	HistoryTable    *[2][7][64]int
+	CounterMoves    *[64][64]engine.Move
+	CorrectionTable *[2][16384]int16
 }
 
 // NewEngine creates a new search instance for a board.
@@ -60,14 +63,15 @@ func NewEngine(b *engine.Board) *Engine {
 	nodes := uint64(0)
 	stopped := int32(0)
 	return &Engine{
-		Board:        b,
-		Nodes:        &nodes,
-		Stopped:      &stopped,
-		TT:           GlobalTT,
-		Threads:      1,
-		MultiPV:      1,
-		HistoryTable: &[2][7][64]int{},
-		CounterMoves: &[64][64]engine.Move{},
+		Board:           b,
+		Nodes:           &nodes,
+		Stopped:         &stopped,
+		TT:              GlobalTT,
+		Threads:         1,
+		MultiPV:         1,
+		HistoryTable:    &[2][7][64]int{},
+		CounterMoves:    &[64][64]engine.Move{},
+		CorrectionTable: &[2][16384]int16{},
 	}
 }
 
@@ -78,7 +82,9 @@ func ResetSearchParameters() {
 	FPMargin = 100
 	NMPBase = 3
 	NMPDivisor = 6
-	UpdateLMR(0.75, 2.25)
+	LMR_Base = 0.75
+	LMR_Multiplier = 2.25
+	UpdateLMR(LMR_Base, LMR_Multiplier)
 }
 
 // syncNodes flushes local node counts to the global atomic counter.
@@ -129,6 +135,7 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 			helper := NewEngine(&bCopy)
 			helper.HistoryTable = e.HistoryTable
 			helper.CounterMoves = e.CounterMoves
+			helper.CorrectionTable = e.CorrectionTable
 			helper.TT = e.TT
 			helper.Nodes = e.Nodes
 			helper.Stopped = e.Stopped
@@ -294,6 +301,47 @@ func (e *Engine) getPV(depth int) string {
 		res += m.String()
 	}
 	return res
+}
+
+// ApplyCorrection applies the correction history to the static evaluation.
+func (e *Engine) ApplyCorrection(staticEval int) int {
+	if e.CorrectionTable == nil {
+		return staticEval
+	}
+
+	pawnHash := e.Board.PawnHash
+	idx := pawnHash % 16384
+	correction := int(e.CorrectionTable[e.Board.SideToMove][idx])
+
+	// Scale correction and apply to evaluation
+	return staticEval + correction/256
+}
+
+// UpdateCorrection updates the correction history with the search result.
+func (e *Engine) UpdateCorrection(depth int, score int, staticEval int) {
+	if e.CorrectionTable == nil || depth < 1 {
+		return
+	}
+
+	pawnHash := e.Board.PawnHash
+	idx := pawnHash % 16384
+
+	// Clamp score for correction calculation
+	bonus := (score - staticEval) * 256
+	if bonus > 1024 {
+		bonus = 1024
+	} else if bonus < -1024 {
+		bonus = -1024
+	}
+
+	// Update with a simple moving average (alpha = 1/depth_dependent_constant)
+	weight := depth
+	if weight > 16 {
+		weight = 16
+	}
+
+	current := int(e.CorrectionTable[e.Board.SideToMove][idx])
+	e.CorrectionTable[e.Board.SideToMove][idx] = int16(current + (bonus-current)/(1+weight))
 }
 
 // printInfo outputs search information in UCI format.

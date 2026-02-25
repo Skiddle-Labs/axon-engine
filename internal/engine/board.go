@@ -224,10 +224,14 @@ func (b *Board) FEN() string {
 	sb.Grow(90)
 
 	// 1. Piece placement
+	var chars [64]byte
+	PiecesToChars(b.PieceArray[:], chars[:])
+
 	for r := 7; r >= 0; r-- {
 		empty := 0
 		for f := 0; f < 8; f++ {
-			p := b.PieceArray[r*8+f]
+			sq := r*8 + f
+			p := b.PieceArray[sq]
 			if p == types.NoPiece {
 				empty++
 			} else {
@@ -235,7 +239,7 @@ func (b *Board) FEN() string {
 					sb.WriteByte(byte('0' + empty))
 					empty = 0
 				}
-				sb.WriteByte(".PNBRQKpnbrqk"[p])
+				sb.WriteByte(chars[sq])
 			}
 		}
 		if empty > 0 {
