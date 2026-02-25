@@ -10,7 +10,7 @@ import (
 )
 
 func (u *UCI) handleUCI() {
-	u.send("id name Axon Engine")
+	u.send("id name Axon Engine (NNUE: " + nnue.NetworkName + ")")
 	u.send("id author Skiddle Labs")
 
 	// Options

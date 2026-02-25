@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"runtime"
@@ -28,6 +29,9 @@ var (
 	threads  = flag.Int("threads", 0, "Number of threads to use for MSE calculation (defaults to 80% of CPUs)")
 	saveFile = flag.String("save", "tuned_params.txt", "Path to save the optimized parameters")
 	method   = flag.String("method", "local", "Optimization method (local or spsa)")
+	lossType = flag.String("loss", "mse", "Loss function to minimize (mse or logloss)")
+	binInput = flag.Bool("bin", false, "Use binary input format (.bin)")
+	analyze  = flag.Bool("analyze", false, "Analyze K-factor and score buckets")
 )
 
 func main() {
@@ -40,12 +44,18 @@ func main() {
 
 	if filePath == "" {
 		fmt.Println("Axon Tuner - Texel Method")
-		fmt.Println("Usage: tuner -file <datafile.epd> [-iterations <n>] [-threads <t>] [-save <file>] [-method <local|spsa>]")
+		fmt.Println("Usage: tuner -file <datafile.epd> [-iterations <n>] [-threads <t>] [-save <file>] [-method <local|spsa>] [-loss <mse|logloss>] [-bin]")
 		flag.PrintDefaults()
 		return
 	}
 
-	entries, err := LoadEntries(filePath)
+	var entries []Entry
+	var err error
+	if *binInput {
+		entries, err = LoadBinaryEntries(filePath)
+	} else {
+		entries, err = LoadEntries(filePath)
+	}
 	if err != nil {
 		fmt.Printf("Error loading entries: %v\n", err)
 		return
@@ -75,6 +85,11 @@ func main() {
 	fmt.Print("Calculating optimal K... ")
 	bestK := FindBestK(precomputed)
 	fmt.Printf("Done. Best K: %.4f\n", bestK)
+
+	if *analyze {
+		AnalyzeK(precomputed, bestK)
+		return
+	}
 
 	// Step 2: Run the optimization loop.
 	if strings.ToLower(*method) == "spsa" {
@@ -207,6 +222,34 @@ func Sigmoid(score, k float64) float64 {
 	return 1.0 / (1.0 + math.Exp(-k*score/400.0*math.Ln10))
 }
 
+func LoadBinaryEntries(path string) ([]Entry, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var entries []Entry
+	for {
+		p, err := engine.Deserialize(file)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return entries, err
+		}
+		board, _, result := p.Unpack()
+		res := 0.5
+		if result == 1 {
+			res = 1.0
+		} else if result == -1 {
+			res = 0.0
+		}
+		entries = append(entries, Entry{board: board, result: res})
+	}
+	return entries, nil
+}
+
 // CalculateMSEParallel computes the Mean Squared Error using multiple threads.
 func CalculateMSEParallel(entries []PrecomputedEntry, k float64) float64 {
 	numThreads := *threads
@@ -214,6 +257,7 @@ func CalculateMSEParallel(entries []PrecomputedEntry, k float64) float64 {
 		numThreads = 1
 	}
 
+	useLogLoss := strings.ToLower(*lossType) == "logloss"
 	chunkSize := (len(entries) + numThreads - 1) / numThreads
 	var totalError uint64 // Using bits for atomic storage of float64
 
@@ -240,7 +284,17 @@ func CalculateMSEParallel(entries []PrecomputedEntry, k float64) float64 {
 					actualResult = 1.0 - actualResult
 				}
 				prediction := Sigmoid(score, k)
-				localError += math.Pow(actualResult-prediction, 2)
+
+				if useLogLoss {
+					// Log Loss (Cross-Entropy)
+					// Avoid log(0) or log(1) with small epsilon
+					const epsilon = 1e-15
+					p := math.Max(epsilon, math.Min(1.0-epsilon, prediction))
+					localError -= actualResult*math.Log(p) + (1.0-actualResult)*math.Log(1.0-p)
+				} else {
+					// Mean Squared Error
+					localError += math.Pow(actualResult-prediction, 2)
+				}
 			}
 
 			// Atomic add for float64
@@ -276,7 +330,8 @@ func RunTuning(entries []PrecomputedEntry, k float64, maxIterations int) {
 	params, names := getTunableParams()
 	bestMSE := CalculateMSEParallel(entries, k)
 
-	fmt.Printf("Initial MSE: %.10f\n", bestMSE)
+	lossName := strings.ToUpper(*lossType)
+	fmt.Printf("Initial %s: %.10f\n", lossName, bestMSE)
 	fmt.Println("Starting Local Search optimization...")
 
 	iteration := 1
@@ -288,7 +343,7 @@ func RunTuning(entries []PrecomputedEntry, k float64, maxIterations int) {
 		}
 
 		improved := false
-		fmt.Printf("Iteration %d | Current MSE: %.10f\n", iteration, bestMSE)
+		fmt.Printf("Iteration %d | Current %s: %.10f\n", iteration, lossName, bestMSE)
 
 		for i, p := range params {
 			oldVal := *p
@@ -299,7 +354,7 @@ func RunTuning(entries []PrecomputedEntry, k float64, maxIterations int) {
 			if newMSE < bestMSE {
 				bestMSE = newMSE
 				improved = true
-				fmt.Printf("  %s: %d -> %d (MSE: %.10f)\n", names[i], oldVal, *p, bestMSE)
+				fmt.Printf("  %s: %d -> %d (%s: %.10f)\n", names[i], oldVal, *p, lossName, bestMSE)
 				saveParams(*saveFile, params, names)
 				continue
 			}
@@ -310,7 +365,7 @@ func RunTuning(entries []PrecomputedEntry, k float64, maxIterations int) {
 			if newMSE < bestMSE {
 				bestMSE = newMSE
 				improved = true
-				fmt.Printf("  %s: %d -> %d (MSE: %.10f)\n", names[i], oldVal, *p, bestMSE)
+				fmt.Printf("  %s: %d -> %d (%s: %.10f)\n", names[i], oldVal, *p, lossName, bestMSE)
 				saveParams(*saveFile, params, names)
 				continue
 			}
@@ -457,6 +512,44 @@ func getTunableParams() ([]*int, []string) {
 	}
 
 	return params, names
+}
+
+func AnalyzeK(entries []PrecomputedEntry, k float64) {
+	fmt.Printf("\n--- Sigmoid Scaling (K=%.4f) Analysis ---\n", k)
+	fmt.Printf("%-15s %-10s %-15s %-15s %-10s\n", "Score Range", "Count", "Actual Win %", "Pred Win %", "Diff")
+	fmt.Println(strings.Repeat("-", 70))
+
+	buckets := 24
+	step := 100
+
+	for i := -buckets / 2; i < buckets/2; i++ {
+		min := i * step
+		max := (i + 1) * step
+
+		var count int
+		var totalResult float64
+		var totalPred float64
+
+		for _, entry := range entries {
+			score := float64(entry.Evaluate())
+			actual := entry.Result
+			if entry.SideToMove == types.Black {
+				actual = 1.0 - actual
+			}
+
+			if int(score) >= min && int(score) < max {
+				count++
+				totalResult += actual
+				totalPred += Sigmoid(score, k)
+			}
+		}
+
+		if count > 0 {
+			actualPct := totalResult / float64(count)
+			predPct := totalPred / float64(count)
+			fmt.Printf("[%4d, %4d) %-10d %-15.4f %-15.4f %-10.4f\n", min, max, count, actualPct, predPct, actualPct-predPct)
+		}
+	}
 }
 
 func printParams(params []*int, names []string) {

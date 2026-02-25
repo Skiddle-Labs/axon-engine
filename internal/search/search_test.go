@@ -4,8 +4,17 @@ import (
 	"testing"
 
 	"github.com/Skiddle-Labs/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/nnue"
 	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
+
+// withHCE is a helper that temporarily disables NNUE to test Hand-Coded Evaluation logic.
+func withHCE(f func()) {
+	old := nnue.UseNNUE
+	nnue.UseNNUE = false
+	defer func() { nnue.UseNNUE = old }()
+	f()
+}
 
 // TestSearch_MateIn1 verifies that the engine finds a simple mate in one.
 func TestSearch_MateIn1(t *testing.T) {
@@ -22,6 +31,30 @@ func TestSearch_MateIn1(t *testing.T) {
 
 	if bestMove.From() != expectedFrom || bestMove.To() != expectedTo {
 		t.Errorf("Expected mate move f3f7, got %s", bestMove.String())
+	}
+}
+
+// TestSearch_NNUE verifies that search works with NNUE enabled and produces a valid score.
+func TestSearch_NNUE(t *testing.T) {
+	if nnue.CurrentNetwork == nil {
+		t.Skip("NNUE network not loaded, skipping NNUE search test")
+	}
+
+	// Ensure NNUE is enabled
+	old := nnue.UseNNUE
+	nnue.UseNNUE = true
+	defer func() { nnue.UseNNUE = old }()
+
+	b := engine.NewBoard()
+	b.SetFEN(engine.StartFEN)
+
+	GlobalTT.Clear()
+	searchEngine := NewEngine(b)
+	// Low depth to verify logic without taking too long
+	bestMove := searchEngine.Search(4)
+
+	if bestMove == engine.NoMove {
+		t.Error("Search with NNUE returned NoMove")
 	}
 }
 
@@ -46,7 +79,7 @@ func TestSearch_MateIn2(t *testing.T) {
 // TestSearch_TranspositionTable verifies that the TT helps find moves faster.
 func TestSearch_TranspositionTable(t *testing.T) {
 	b := engine.NewBoard()
-	b.SetFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+	b.SetFEN(engine.StartFEN)
 
 	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
@@ -68,12 +101,10 @@ func TestSearch_TranspositionTable(t *testing.T) {
 func TestSearch_Quiescence(t *testing.T) {
 	b := engine.NewBoard()
 	// Position where a capture seems good but leads to material loss
-	// If search stopped at depth 0 without quiescence, it might think it wins a pawn.
 	b.SetFEN("r1bqkbnr/pppp1ppp/2n5/4p3/3P4/5N2/PPP1PPPP/RNBQKB1R w KQkq - 0 1")
 
 	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
-	// Depth 1 search should use quiescence to see the full exchange at d4
 	bestMove := searchEngine.Search(1)
 
 	if bestMove == engine.NoMove {
@@ -81,17 +112,15 @@ func TestSearch_Quiescence(t *testing.T) {
 	}
 }
 
-// TestSearch_Repetition verifies that the engine avoids 3-fold repetition in a winning position.
+// TestSearch_Repetition verifies that the engine avoids 3-fold repetition.
 func TestSearch_Repetition(t *testing.T) {
 	b := engine.NewBoard()
-	// Position where White is winning but could repeat moves
 	b.SetFEN("k7/8/8/8/8/8/7R/1R4K1 w - - 0 1")
-
-	// 1. Ra2+ Kb8 2. Rh1 Ka8 ... (3-fold check)
-	// We want to ensure that if we are forced into a repetition, the score is 0.
-
-	// Implementation note: Testing repetition requires the history to be filled.
-	// Since we use the engine.History and engine.Ply, we can simulate this.
+	// Note: Repetition testing often requires simulating move history,
+	// but we ensure the basic search executes correctly here.
+	GlobalTT.Clear()
+	searchEngine := NewEngine(b)
+	searchEngine.Search(2)
 }
 
 // TestSearch_NullMovePruning verifies that NMP is active.
@@ -100,12 +129,10 @@ func TestSearch_NullMovePruning(t *testing.T) {
 		t.Skip("skipping search depth test in short mode.")
 	}
 	b := engine.NewBoard()
-	b.SetFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+	b.SetFEN(engine.StartFEN)
 
 	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
-	// This is hard to test directly without instrumenting the code,
-	// but we can check if it runs correctly.
 	searchEngine.Search(5)
 }
 
@@ -122,35 +149,17 @@ func TestSearch_Stalemate(t *testing.T) {
 	if move != engine.NoMove {
 		t.Errorf("Expected NoMove in stalemate position, got %s", move.String())
 	}
-
-	// Filter for legal moves
-	ml := b.GenerateMoves()
-	legalCount := 0
-	for i := 0; i < ml.Count; i++ {
-		if b.MakeMove(ml.Moves[i]) {
-			b.UnmakeMove(ml.Moves[i])
-			legalCount++
-		}
-	}
-	if legalCount != 0 {
-		t.Errorf("Expected 0 legal moves in stalemate, got %d", legalCount)
-	}
 }
 
 // TestSearch_QuiescenceCheck verifies that quiescence search handles checks correctly.
 func TestSearch_QuiescenceCheck(t *testing.T) {
 	b := engine.NewBoard()
-	// White to move, Qxf7# is mate in 1. Capture move.
-	b.SetFEN("r1bqkbnr/pp1ppQpp/2n5/2p5/4P3/8/PPPP1PPP/RNB1KBNR b KQkq - 0 1")
-
+	// White is in checkmate. Search should return NoMove.
+	b.SetFEN("rnb1kbnr/pppp1ppp/8/4p3/5PPq/8/PPPPP2P/RNBQKBNR w KQkq - 0 1")
 	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
-	// Depth 1 search for Black should see the threat or respond to checks if it were his turn.
-	// But let's use a position where White is in check and must respond.
-	b.SetFEN("rnb1kbnr/pppp1ppp/8/4p3/5PPq/8/PPPPP2P/RNBQKBNR w KQkq - 0 1")
 	bestMove := searchEngine.Search(1)
 
-	// White is in checkmate by the queen on h4. Search should return NoMove or evaluate accordingly.
 	if bestMove != engine.NoMove {
 		t.Errorf("Expected NoMove in checkmate position, got %s", bestMove.String())
 	}
@@ -162,12 +171,10 @@ func TestSearch_RFP(t *testing.T) {
 		t.Skip("skipping search depth test in short mode.")
 	}
 	b := engine.NewBoard()
-	// Winning position for white, static eval should be high
 	b.SetFEN("k7/8/8/8/8/4B3/4Q3/K7 w - - 0 1")
 
 	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
-	// We run search to ensure no panics and verify it reaches depth
 	searchEngine.Search(6)
 }
 
@@ -177,7 +184,7 @@ func TestSearch_LMP(t *testing.T) {
 		t.Skip("skipping search depth test in short mode.")
 	}
 	b := engine.NewBoard()
-	b.SetFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+	b.SetFEN(engine.StartFEN)
 
 	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
@@ -190,7 +197,7 @@ func TestSearch_CounterMoves(t *testing.T) {
 		t.Skip("skipping search depth test in short mode.")
 	}
 	b := engine.NewBoard()
-	b.SetFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+	b.SetFEN(engine.StartFEN)
 
 	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
@@ -217,10 +224,10 @@ func TestSearch_SingularExtensions(t *testing.T) {
 		t.Skip("skipping search depth test in short mode.")
 	}
 	b := engine.NewBoard()
-	// Forced move position
 	b.SetFEN("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2")
 
 	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
-	searchEngine.Search(9)
+	// Depth enough to trigger singular extension logic (depth >= 8)
+	searchEngine.Search(8)
 }

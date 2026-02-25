@@ -24,6 +24,7 @@ var (
 	bookFile    = flag.String("book", "", "Path to Polyglot book file (optional)")
 	outputFile  = flag.String("out", "data.epd", "Output file for training data")
 	inputEPD    = flag.String("input", "", "Path to input EPD file for starting positions (optional)")
+	binOutput   = flag.Bool("bin", false, "Use binary output format (.bin)")
 	minPly      = flag.Int("minply", 16, "Minimum ply to start recording positions")
 	maxPly      = flag.Int("maxply", 200, "Maximum ply to stop recording positions")
 	adjScore    = flag.Int("adj-score", 1000, "Adjudication score (centipawns) to end games early")
@@ -38,8 +39,13 @@ const (
 	ResultLoss GameResult = -1
 )
 
+type GamePosition struct {
+	FEN   string
+	Score int
+}
+
 type GameResultData struct {
-	Positions []string
+	Positions []GamePosition
 	Result    GameResult
 }
 
@@ -100,7 +106,11 @@ func main() {
 	// Dedicated writer goroutine to avoid mutex contention
 	go func() {
 		for res := range results {
-			SaveToDisk(writer, res.Positions, res.Result)
+			if *binOutput {
+				SaveBinary(writer, res.Positions, res.Result)
+			} else {
+				SaveToDisk(writer, res.Positions, res.Result)
+			}
 		}
 		writer.Flush()
 		close(writerDone)
@@ -157,7 +167,7 @@ func main() {
 		posCount, duration, float64(posCount)/duration)
 }
 
-func PlaySingleGame(fen string, book *engine.PolyglotBook, rng *rand.Rand) ([]string, GameResult) {
+func PlaySingleGame(fen string, book *engine.PolyglotBook, rng *rand.Rand) ([]GamePosition, GameResult) {
 	board := engine.NewBoard()
 	if err := board.SetFEN(fen); err != nil {
 		return nil, ResultDraw
@@ -189,7 +199,7 @@ func PlaySingleGame(fen string, book *engine.PolyglotBook, rng *rand.Rand) ([]st
 		board.MakeMove(move)
 	}
 
-	var positions []string
+	var positions []GamePosition
 	highScoreCounter := 0
 	lastScore := 0
 
@@ -214,8 +224,8 @@ func PlaySingleGame(fen string, book *engine.PolyglotBook, rng *rand.Rand) ([]st
 			}
 		}
 
-		// Search for move
-		move := eng.Search(*searchDepth)
+		// Search for move (high-throughput fixed depth)
+		move, score := eng.SearchFixedDepth(*searchDepth)
 
 		if move == engine.NoMove {
 			kingSq := board.Pieces[board.SideToMove][types.King].LSB()
@@ -229,36 +239,33 @@ func PlaySingleGame(fen string, book *engine.PolyglotBook, rng *rand.Rand) ([]st
 			return positions, ResultDraw
 		}
 
-		// Extract score from TT for adjudication
-		score, _, found := search.GlobalTT.Probe(board.Hash, *searchDepth, -search.Infinity, search.Infinity, 0)
-		if found {
-			absScore := score
-			if absScore < 0 {
-				absScore = -absScore
-			}
+		// Adjudication logic based on search score
+		absScore := score
+		if absScore < 0 {
+			absScore = -absScore
+		}
 
-			if absScore >= *adjScore {
-				highScoreCounter++
-			} else {
-				highScoreCounter = 0
-			}
+		if absScore >= *adjScore {
+			highScoreCounter++
+		} else {
+			highScoreCounter = 0
+		}
 
-			// End game if score is consistently huge
-			if highScoreCounter >= *adjCount {
-				if score > 0 {
-					if board.SideToMove == types.White {
-						return positions, ResultWin
-					}
-					return positions, ResultLoss
-				} else {
-					if board.SideToMove == types.White {
-						return positions, ResultLoss
-					}
+		// End game if score is consistently huge
+		if highScoreCounter >= *adjCount {
+			if score > 0 {
+				if board.SideToMove == types.White {
 					return positions, ResultWin
 				}
+				return positions, ResultLoss
+			} else {
+				if board.SideToMove == types.White {
+					return positions, ResultLoss
+				}
+				return positions, ResultWin
 			}
-			lastScore = score
 		}
+		lastScore = score
 
 		// Filter and record position
 		if board.Ply >= *minPly && board.Ply <= *maxPly {
@@ -267,7 +274,7 @@ func PlaySingleGame(fen string, book *engine.PolyglotBook, rng *rand.Rand) ([]st
 			inCheck := board.IsSquareAttacked(kingSq, board.SideToMove^1)
 			if !inCheck && lastScore < 2000 && lastScore > -2000 {
 				fen := GetEPDFEN(board)
-				positions = append(positions, fen)
+				positions = append(positions, GamePosition{FEN: fen, Score: lastScore})
 			}
 		}
 
@@ -355,7 +362,7 @@ func GetPieceChar(p types.Piece) string {
 	return string(chars[int(p)])
 }
 
-func SaveToDisk(writer *bufio.Writer, positions []string, result GameResult) {
+func SaveToDisk(writer *bufio.Writer, positions []GamePosition, result GameResult) {
 	resStr := " [0.5]\n"
 	if result == ResultWin {
 		resStr = " [1.0]\n"
@@ -363,8 +370,24 @@ func SaveToDisk(writer *bufio.Writer, positions []string, result GameResult) {
 		resStr = " [0.0]\n"
 	}
 
-	for _, fen := range positions {
-		writer.WriteString(fen)
+	for _, pos := range positions {
+		writer.WriteString(pos.FEN)
 		writer.WriteString(resStr)
+	}
+}
+
+func SaveBinary(writer *bufio.Writer, positions []GamePosition, result GameResult) {
+	res := 0 // ResultDraw
+	if result == ResultWin {
+		res = 1
+	} else if result == ResultLoss {
+		res = -1
+	}
+
+	b := engine.NewBoard()
+	for _, pos := range positions {
+		b.SetFEN(pos.FEN)
+		packed := b.Pack(pos.Score, res)
+		packed.Serialize(writer)
 	}
 }

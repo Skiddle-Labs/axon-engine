@@ -93,6 +93,8 @@ func (u *UCI) Start() {
 			u.handleBench(fields)
 		case "count":
 			u.handleCount(fields)
+		case "perft":
+			u.handlePerft(fields)
 		}
 	}
 }

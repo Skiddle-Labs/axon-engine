@@ -42,77 +42,105 @@ sub_loop:
     VZEROUPPER
     RET
 
-// func evaluateAVX2(us, them *types.Accumulator, weights *int16, bias int32) int32
+// func evaluateAVX2(us, them *types.Accumulator, weights *int16, bias int16) int32
 TEXT ·evaluateAVX2(SB), NOSPLIT, $0-36
     MOVQ us+0(FP), DI
     MOVQ them+8(FP), SI
     MOVQ weights+16(FP), DX
-    MOVL bias+24(FP), R8
+    MOVWQSX bias+24(FP), R8 // Load and sign-extend bias to 64-bit
 
-    VPXOR Y4, Y4, Y4    // Main sum accumulator (int32)
+    VPXOR Y4, Y4, Y4    // Main sum accumulator (int64) - Low parts
+    VPXOR Y5, Y5, Y5    // Main sum accumulator (int64) - High parts
     VPXOR Y6, Y6, Y6    // Constant zero for clamping
 
-    // Load constant 127 for SCReLU clamping
-    MOVL $127, AX
+    // Load constant 255 for SCReLU clamping (QA)
+    MOVL $255, AX
     VMOVQ AX, X0
-    VPBROADCASTW X0, Y5 // Y5 = [127, 127, ..., 127] (int16)
+    VPBROADCASTW X0, Y7 // Y7 = [255, 255, ..., 255] (int16)
 
-    // 1. Process 'Us' perspective (256 elements)
-    MOVQ $16, CX
+    // Perspective 'Us' (256 elements)
+    // We process 8 elements at a time to allow expansion to 32-bit then 64-bit
+    MOVQ $32, CX        // 256 / 8 = 32 iterations
 us_loop:
-    VMOVDQU (DI), Y0    // Load 16 values
-    VPMAXSW Y6, Y0, Y0  // x = max(x, 0)
-    VPMINSW Y5, Y0, Y0  // x = min(x, 127)
+    VMOVDQU (DI), X0    // Load 8 values (int16)
+    VPMAXSW X6, X0, X0  // x = max(x, 0)
+    VPMINSW X7, X0, X0  // x = min(x, 255)
 
-    VPMULLW Y0, Y0, Y0  // x = x * x (max 16129, fits in int16)
+    VPMULLW X0, X0, X0  // x^2 (low 16 bits of 255^2 is correct)
+    VPMOVZXWD X0, Y2    // Y2 = [x^2_0, ..., x^2_7] (int32)
 
-    VMOVDQU (DX), Y1    // Load 16 output weights
-    VPMADDWD Y1, Y0, Y0 // Multiply and add pairs: Y0 = [x0*w0+x1*w1, x2*w2+x3*w3, ...] (int32)
-    VPADDD Y0, Y4, Y4    // Accumulate into Y4
+    VMOVDQU (DX), X1    // Load 8 weights (int16)
+    VPMOVSXWD X1, Y3    // Y3 = [w_0, ..., w_7] (int32)
 
-    ADDQ $32, DI
-    ADDQ $32, DX
+    VPMULLD Y2, Y3, Y2  // Y2 = [x^2*w_0, ..., x^2*w_7] (int32)
+
+    VPMOVSXDQ X2, Y8    // Low 4 elements of Y2 to int64
+    VEXTRACTI128 $1, Y2, X9
+    VPMOVSXDQ X9, Y9    // High 4 elements of Y2 to int64
+
+    VPADDQ Y8, Y4, Y4
+    VPADDQ Y9, Y5, Y5
+
+    ADDQ $16, DI
+    ADDQ $16, DX
     DECQ CX
     JNZ us_loop
 
-    // 2. Process 'Them' perspective (256 elements)
-    MOVQ $16, CX
+    // Perspective 'Them' (256 elements)
+    MOVQ $32, CX
 them_loop:
-    VMOVDQU (SI), Y0
-    VPMAXSW Y6, Y0, Y0
-    VPMINSW Y5, Y0, Y0
+    VMOVDQU (SI), X0
+    VPMAXSW X6, X0, X0
+    VPMINSW X7, X0, X0
 
-    VPMULLW Y0, Y0, Y0
+    VPMULLW X0, X0, X0
+    VPMOVZXWD X0, Y2
 
-    VMOVDQU (DX), Y1
-    VPMADDWD Y1, Y0, Y0
-    VPADDD Y0, Y4, Y4
+    VMOVDQU (DX), X1
+    VPMOVSXWD X1, Y3
 
-    ADDQ $32, SI
-    ADDQ $32, DX
+    VPMULLD Y2, Y3, Y2
+
+    VPMOVSXDQ X2, Y8
+    VEXTRACTI128 $1, Y2, X9
+    VPMOVSXDQ X9, Y9
+
+    VPADDQ Y8, Y4, Y4
+    VPADDQ Y9, Y5, Y5
+
+    ADDQ $16, SI
+    ADDQ $16, DX
     DECQ CX
     JNZ them_loop
 
-    // Horizontal sum of Y4 (8 x int32)
+    // Horizontal sum of Y4 and Y5 (int64)
+    VPADDQ Y4, Y5, Y4    // Y4 = [sum0, sum1, sum2, sum3] (int64)
     VEXTRACTI128 $1, Y4, X0
-    VPADDD X0, X4, X0
-    VPHADDD X0, X0, X0
-    VPHADDD X0, X0, X0
-    VMOVD X0, AX         // AX = final accumulated sum (int32)
+    VPADDQ X0, X4, X0    // X0 = [sum0+2, sum1+3]
+    VMOVQ X0, R9
+    VPEXTRQ $1, X0, R10
+    ADDQ R10, R9         // R9 = final 64-bit sum
 
-    // Final Quantization: (sum / 255 + bias) / 64
-    CDQ                  // Sign extend EAX into EDX:EAX
-    MOVL $255, CX
-    IDIVL CX             // EAX = EAX / 255 (QA)
+    // Final Quantization Logic:
+    // internalScore = (output / 255) + bias
+    // return (internalScore * 400) / (255 * 64)
 
-    ADDL R8, AX          // EAX += OutputBias
+    // 1. output / 255
+    MOVQ R9, AX
+    MOVQ $255, CX
+    CQO                  // Sign extend RAX into RDX:RAX
+    IDIVQ CX             // RAX = output / 255
 
-    // Truncate towards zero for division by 64 (matching Go's / 64 behavior)
-    MOVL AX, DX
-    SARL $31, DX         // DX = (AX < 0) ? -1 : 0
-    ANDL $63, DX         // DX = (AX < 0) ? 63 : 0
-    ADDL DX, AX          // Add correction for negative numbers
-    SARL $6, AX          // Shift right arithmetic
+    // 2. Add bias
+    ADDQ R8, AX          // RAX = internalScore
+
+    // 3. Scale by EvalScale (400)
+    IMULQ $400, AX       // RAX = internalScore * 400
+
+    // 4. Divide by QAB (255 * 64 = 16320)
+    MOVQ $16320, CX
+    CQO
+    IDIVQ CX             // RAX = final centipawn score
 
     MOVL AX, ret+32(FP)
     VZEROUPPER

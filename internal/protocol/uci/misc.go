@@ -10,10 +10,12 @@ import (
 
 	"github.com/Skiddle-Labs/axon-engine/internal/engine"
 	"github.com/Skiddle-Labs/axon-engine/internal/eval"
+	"github.com/Skiddle-Labs/axon-engine/internal/nnue"
 	"github.com/Skiddle-Labs/axon-engine/internal/search"
 )
 
 func (u *UCI) handleIsReady() {
+	u.send("info string NNUE: " + nnue.NetworkName)
 	u.send("readyok")
 }
 
@@ -82,4 +84,35 @@ func (u *UCI) handleCount(fields []string) {
 	}
 
 	u.send(fmt.Sprintf("info string Total positions in %s: %d", filename, count))
+}
+
+func (u *UCI) handlePerft(fields []string) {
+	depth := 5
+	if len(fields) > 1 {
+		if d, err := strconv.Atoi(fields[1]); err == nil {
+			depth = d
+		}
+	}
+
+	start := time.Now()
+	ml := u.board.GenerateMoves()
+	var totalNodes uint64
+
+	for i := 0; i < ml.Count; i++ {
+		move := ml.Moves[i]
+		if u.board.MakeMove(move) {
+			nodes := u.board.Perft(depth - 1)
+			u.board.UnmakeMove(move)
+			u.send(fmt.Sprintf("%s: %d", move.String(), nodes))
+			totalNodes += nodes
+		}
+	}
+
+	elapsed := time.Since(start)
+	nps := uint64(0)
+	if elapsed.Seconds() > 0 {
+		nps = uint64(float64(totalNodes) / elapsed.Seconds())
+	}
+
+	u.send(fmt.Sprintf("\nDepth: %d\nNodes: %d\nTime: %v\nNPS: %d", depth, totalNodes, elapsed, nps))
 }

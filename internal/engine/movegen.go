@@ -4,6 +4,27 @@ import (
 	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
 
+// Perft (Performance Test) is a debugging tool for verifying the correctness of the move generator.
+// It recursively explores the move tree to a given depth and counts all leaf nodes.
+func (b *Board) Perft(depth int) uint64 {
+	if depth == 0 {
+		return 1
+	}
+
+	var nodes uint64
+	ml := b.GenerateMoves()
+
+	for i := 0; i < ml.Count; i++ {
+		move := ml.Moves[i]
+		if b.MakeMove(move) {
+			nodes += b.Perft(depth - 1)
+			b.UnmakeMove(move)
+		}
+	}
+
+	return nodes
+}
+
 // GenerateMoves generates all pseudo-legal moves for the current board position.
 // Pseudo-legal moves include moves that might leave the king in check.
 func (b *Board) GenerateMoves() MoveList {

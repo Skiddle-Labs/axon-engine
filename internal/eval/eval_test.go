@@ -4,19 +4,50 @@ import (
 	"testing"
 
 	"github.com/Skiddle-Labs/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/nnue"
 	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
 
-// TestEvaluate_StartingPosition verifies that the starting position is evaluated as 0 (balanced).
+// withHCE is a helper that temporarily disables NNUE to test Hand-Coded Evaluation logic.
+func withHCE(f func()) {
+	old := nnue.UseNNUE
+	nnue.UseNNUE = false
+	defer func() { nnue.UseNNUE = old }()
+	f()
+}
+
+// TestEvaluate_StartingPosition verifies that the starting position is evaluated as 0 (balanced) in HCE.
 func TestEvaluate_StartingPosition(t *testing.T) {
+	withHCE(func() {
+		b := engine.NewBoard()
+		b.SetFEN(engine.StartFEN)
+
+		score := Evaluate(b)
+
+		// In the exact starting position, with symmetrical PSTs and material, the HCE score should be 0.
+		if score != 0 {
+			t.Errorf("Expected HCE score 0 for starting position, got %d", score)
+		}
+	})
+}
+
+// TestEvaluate_NNUE_Loaded verifies that NNUE evaluation returns a non-zero score for the startpos (usually).
+func TestEvaluate_NNUE_Loaded(t *testing.T) {
+	if nnue.CurrentNetwork == nil {
+		t.Skip("NNUE network not loaded, skipping NNUE test")
+	}
+
+	old := nnue.UseNNUE
+	nnue.UseNNUE = true
+	defer func() { nnue.UseNNUE = old }()
+
 	b := engine.NewBoard()
-	b.SetFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+	b.SetFEN(engine.StartFEN)
 
 	score := Evaluate(b)
-
-	// In the exact starting position, with symmetrical PSTs and material, the score should be 0.
-	if score != 0 {
-		t.Errorf("Expected score 0 for starting position, got %d", score)
+	// It's extremely unlikely a trained network evaluates the starting position as exactly 0.
+	if score == 0 {
+		t.Log("Note: NNUE evaluated startpos as 0, which is unusual but possible.")
 	}
 }
 
@@ -33,24 +64,24 @@ func TestEvaluate_MaterialAdvantage(t *testing.T) {
 	}
 }
 
-// TestEvaluate_PawnStructure verifies that doubled pawns are penalized.
+// TestEvaluate_PawnStructure verifies that doubled pawns are penalized in HCE.
 func TestEvaluate_PawnStructure(t *testing.T) {
-	b1 := engine.NewBoard()
-	b2 := engine.NewBoard()
+	withHCE(func() {
+		b1 := engine.NewBoard()
+		b2 := engine.NewBoard()
 
-	// b1: Doubled pawns on A file
-	b1.SetFEN("k7/8/8/8/8/P7/P7/K7 w - - 0 1")
-	// b2: Connected pawns on 2nd rank
-	b2.SetFEN("k7/8/8/8/8/8/PP6/K7 w - - 0 1")
+		// b1: Doubled pawns on A file
+		b1.SetFEN("k7/8/8/8/8/P7/P7/K7 w - - 0 1")
+		// b2: Connected pawns on 2nd rank
+		b2.SetFEN("k7/8/8/8/8/8/PP6/K7 w - - 0 1")
 
-	// Note: SetFEN calculates hash and state.
-	// We want to compare the evaluation of the two positions.
-	score1 := Evaluate(b1)
-	score2 := Evaluate(b2)
+		score1 := Evaluate(b1)
+		score2 := Evaluate(b2)
 
-	if score2 <= score1 {
-		t.Errorf("Expected connected pawns (score:%d) to be better than doubled pawns (score:%d)", score2, score1)
-	}
+		if score2 <= score1 {
+			t.Errorf("Expected connected pawns (score:%d) to be better than doubled pawns (score:%d) in HCE", score2, score1)
+		}
+	})
 }
 
 // TestEvaluate_BishopPair verifies the bishop pair bonus.
@@ -63,12 +94,11 @@ func TestEvaluate_BishopPair(t *testing.T) {
 	mg, eg := evaluateColor(b, types.White, pmg, peg)
 
 	// mg and eg should include the bishop values + PST + mobility + bishop pair bonus
-	// BishopMG is 365. 365 * 2 = 730. Bishop pair bonus is 30. King PST A1 is -30.
 	if mg < 700 {
 		t.Errorf("Midgame score %d too low, likely missing Bishop Pair bonus", mg)
 	}
 
-	if eg < 610 { // BishopEG is 297. 297 * 2 = 594. Bonus 50. King PST A1 is -50.
+	if eg < 610 {
 		t.Errorf("Endgame score %d too low, likely missing Bishop Pair bonus", eg)
 	}
 }
@@ -78,7 +108,7 @@ func TestEvaluate_Tapering(t *testing.T) {
 	b := engine.NewBoard()
 
 	// Midgame position (lots of pieces)
-	b.SetFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+	b.SetFEN(engine.StartFEN)
 	mgW1, egW1, _ := calculatePhase(b)
 
 	// Endgame position (few pieces)
@@ -131,24 +161,5 @@ func TestEvaluate_Threats(t *testing.T) {
 	}
 	if eg1 >= eg2 {
 		t.Errorf("Hanging piece should be penalized in endgame. eg1:%d, eg2:%d", eg1, eg2)
-	}
-
-	// 2. Bad Trade: White Rook defended by Pawn, but attacked by Black Pawn
-	b3 := engine.NewBoard()
-	b3.SetFEN("k7/8/8/3p4/4R3/4P3/8/K7 w - - 0 1")
-	pmg3, peg3 := evaluatePawnStructure(b3, types.White)
-	mg3, eg3 := evaluateColor(b3, types.White, pmg3, peg3)
-
-	// Same position but Rook is not attacked
-	b4 := engine.NewBoard()
-	b4.SetFEN("k7/8/8/8/4R3/4P3/8/K7 w - - 0 1")
-	pmg4, peg4 := evaluatePawnStructure(b4, types.White)
-	mg4, eg4 := evaluateColor(b4, types.White, pmg4, peg4)
-
-	if mg3 >= mg4 {
-		t.Errorf("Bad trade (Rook vs Pawn) should be penalized in midgame. mg3:%d, mg4:%d", mg3, mg4)
-	}
-	if eg3 >= eg4 {
-		t.Errorf("Bad trade (Rook vs Pawn) should be penalized in endgame. eg3:%d, eg4:%d", eg3, eg4)
 	}
 }

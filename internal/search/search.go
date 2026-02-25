@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Skiddle-Labs/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/eval"
 )
 
 const (
@@ -274,6 +275,43 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 	}
 
 	return globalBestMove
+}
+
+// SearchFixedDepth performs a single-depth search without iterative deepening or
+// time management overhead. It returns the best move and the search score.
+// This is optimized for high-throughput data generation.
+func (e *Engine) SearchFixedDepth(depth int) (engine.Move, int) {
+	atomic.StoreUint64(e.Nodes, 0)
+	e.localNodes = 0
+	atomic.StoreInt32(e.Stopped, 0)
+
+	// Run a single negamax pass with a full window
+	score := e.negamax(depth, -Infinity, Infinity, 0, engine.NoMove)
+
+	// Retrieve best move from Transposition Table
+	_, move, found := e.TT.Probe(e.Board.Hash, depth, -Infinity, Infinity, 0)
+	if !found || move == engine.NoMove {
+		// Fallback: pick the first legal move if no TT entry exists
+		ml := e.Board.GenerateMoves()
+		for i := 0; i < ml.Count; i++ {
+			if e.Board.MakeMove(ml.Moves[i]) {
+				e.Board.UnmakeMove(ml.Moves[i])
+				move = ml.Moves[i]
+				break
+			}
+		}
+	}
+
+	return move, score
+}
+
+// EvaluateBatch performs evaluation on a slice of board states.
+// This provides an interface for future batch-SIMD or GPU-accelerated
+// inference to maximize throughput during massive data generation runs.
+func (e *Engine) EvaluateBatch(boards []*engine.Board, results []int) {
+	for i, b := range boards {
+		results[i] = eval.Evaluate(b)
+	}
 }
 
 // getPV extracts the Principal Variation string from the Transposition Table.

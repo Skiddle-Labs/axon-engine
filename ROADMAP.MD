@@ -54,18 +54,18 @@ This document tracks the planned improvements and current progress of the Axon c
 - [x] **En Passant Refinement**: Robustify Zobrist hashing and evaluation (Passed Pawn awareness) for En Passant.
 
 ## 5. Advanced Tuning & Calibration
-- [ ] **Log Loss (Cross-Entropy)**: Add support for Log Loss in the tuner to improve NNUE/HCE calibration.
+- [x] **Log Loss (Cross-Entropy)**: Add support for Log Loss in the tuner to improve NNUE/HCE calibration.
 - [ ] **ELO-Based SPSA**: Direct optimization for match performance.
-- [ ] **Sigmoid Scaling (K-Factor) Analysis**: Tools to visualize how well the engine's scores match real-world probabilities.
+- [x] **Sigmoid Scaling (K-Factor) Analysis**: Tools to visualize how well the engine's scores match real-world probabilities.
 
 ## 6. Datagen & Dataset Pipeline
 - [x] **Lock-free Output Buffering**: Minimize mutex contention when writing results from many threads.
 - [x] **SIMD-Accelerated FEN/EPD**: Use SIMD for piece-to-char conversion and string formatting.
-- [ ] **Batch Search**: Optimize search specifically for bulk data generation at low depths.
-- [ ] **Binary Format Support**: Support for `.bin` or `.bullet` formats to eliminate string parsing overhead.
+- [x] **Batch Search**: Optimize search specifically for bulk data generation at low depths.
+- [x] Binary Format Support: Support for `.bin` formats to eliminate string parsing overhead.
 
 ## 7. Testing & Quality Assurance
-- [ ] **SPRT Framework**: Integrated Sequential Probability Ratio Testing for ELO validation.
+- [x] **SPRT Framework**: Integrated Sequential Probability Ratio Testing for ELO validation.
 - [ ] **Regression Suites**: Automated testing against previous releases.
 - [x] **UCI Option Support**: Expose search knobs via UCI for easier tuning.
 
@@ -80,12 +80,12 @@ This document tracks the planned improvements and current progress of the Axon c
 - [x] **Capture History**: Use historical capture success to improve move ordering in Quiescence search.
 
 ## 9. Development & Support Tooling
-- [ ] **EPD Processing Suite**: Specialized tools for shuffling, merging, and filtering blunders from datasets.
+- [x] EPD Processing Suite: Specialized tools for shuffling, merging, and filtering blunders from datasets (epdproc).
 - [ ] **Automated SPRT Controller**: Scripts to manage Cutechess-cli matches and report statistical Elo gains.
 - [ ] **Search Visualization**: Tools to export and visualize search trees for debugging pruning behavior.
 
 ## 10. Quality of Life & Developer Experience
-- [ ] **Integrated Perft**: Built-in move generation speed and correctness tester.
+- [x] **Integrated Perft**: Built-in move generation speed and correctness tester.
 - [ ] **Colored Board Display**: ANSI colors for the `display` command to make terminal testing more intuitive.
 - [ ] **Logging System**: Dedicated logging to file for debugging long matches and unexpected crashes.
 - [ ] **Tuner Auto-Pilot**: Scripts to automate the full pipeline: datagen -> FindBestK -> SPSA -> apply.

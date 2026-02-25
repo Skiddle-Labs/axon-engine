@@ -49,16 +49,17 @@ engine: # Engine settings.
       enabled: false
 
   uci_options: # Arbitrary UCI options passed to the engine.
-    Hash: 512 # Max memory (in megabytes) the engine can allocate for the Transposition Table.
-    Threads: 4 # Number of threads for parallel search (Lazy SMP).
-    MultiPV: 1 # Number of principal variations to analyze.
+    Hash: 1024 # Increased for higher accuracy in deep searches.
+    Threads: 8 # Optimized for common 8-core VPS environments.
+    MultiPV: 1
+    UCI_ShowWDL: true # Enables Win/Draw/Loss reporting in the Lichess UI.
 
   silence_stderr: false
 
 abort_time: 30 # Time to abort a game in seconds when there is no activity.
 fake_think_time: false # Artificially slow down the bot to pretend like it's thinking.
-rate_limiting_delay: 0 # Time (in ms) to delay after sending a move to prevent "Too Many Requests" errors.
-move_overhead: 2000 # Increase if your bot flags games too often.
+rate_limiting_delay: 100 # Added slight delay to prevent Lichess API rate limiting.
+move_overhead: 1000 # Reduced overhead for tighter time control management.
 max_takebacks_accepted: 0 # The number of times to allow an opponent to take back a move in a game.
 quit_after_all_games_finish: true
 
@@ -81,6 +82,7 @@ challenge: # Incoming challenges.
   variants:
     - standard
   time_controls:
+    - ultraBullet
     - bullet
     - blitz
     - rapid
@@ -89,9 +91,9 @@ challenge: # Incoming challenges.
     - rated
 
 greeting:
-  hello: "Hi! I'm {me} (Axon Engine). Good luck!"
-  goodbye: "Good game!"
-  hello_spectators: "Hi! I'm {me}. I'm a Go-based chess engine."
+  hello: "Hi! I'm {me} (Axon NNUE v1). Powered by a 22M position dataset. Good luck!"
+  goodbye: "Good game! {opponent} ({rating})."
+  hello_spectators: "Welcome! I'm {me}, a Go-based engine using a 256-node NNUE architecture."
   goodbye_spectators: "Thanks for watching!"
 
 matchmaking:

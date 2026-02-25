@@ -92,16 +92,16 @@ func TestSaveToDisk(t *testing.T) {
 	var buf bytes.Buffer
 	writer := bufio.NewWriter(&buf)
 
-	positions := []string{
-		"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -",
-		"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3",
+	positions := []GamePosition{
+		{FEN: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -", Score: 0},
+		{FEN: "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3", Score: 10},
 	}
 
 	// Test Win
 	buf.Reset()
 	SaveToDisk(writer, positions, ResultWin)
 	writer.Flush()
-	expected := positions[0] + " [1.0]\n" + positions[1] + " [1.0]\n"
+	expected := positions[0].FEN + " [1.0]\n" + positions[1].FEN + " [1.0]\n"
 	if buf.String() != expected {
 		t.Errorf("SaveToDisk(Win) = %q; want %q", buf.String(), expected)
 	}
@@ -110,7 +110,7 @@ func TestSaveToDisk(t *testing.T) {
 	buf.Reset()
 	SaveToDisk(writer, positions, ResultLoss)
 	writer.Flush()
-	expected = positions[0] + " [0.0]\n" + positions[1] + " [0.0]\n"
+	expected = positions[0].FEN + " [0.0]\n" + positions[1].FEN + " [0.0]\n"
 	if buf.String() != expected {
 		t.Errorf("SaveToDisk(Loss) = %q; want %q", buf.String(), expected)
 	}
@@ -119,7 +119,7 @@ func TestSaveToDisk(t *testing.T) {
 	buf.Reset()
 	SaveToDisk(writer, positions, ResultDraw)
 	writer.Flush()
-	expected = positions[0] + " [0.5]\n" + positions[1] + " [0.5]\n"
+	expected = positions[0].FEN + " [0.5]\n" + positions[1].FEN + " [0.5]\n"
 	if buf.String() != expected {
 		t.Errorf("SaveToDisk(Draw) = %q; want %q", buf.String(), expected)
 	}

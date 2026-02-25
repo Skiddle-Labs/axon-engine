@@ -17,7 +17,7 @@ func updateAccumulatorAVX2(acc *types.Accumulator, weights *int16)
 func subAccumulatorAVX2(acc *types.Accumulator, weights *int16)
 
 //go:noescape
-func evaluateAVX2(us, them *types.Accumulator, weights *int16, bias int32) int32
+func evaluateAVX2(us, them *types.Accumulator, weights *int16, bias int16) int32
 
 var (
 	hasAVX2 = false

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"strings"
 	"time"
 )
 
@@ -41,8 +42,9 @@ func RunSPSA(entries []PrecomputedEntry, k float64, iterations int) {
 		bestTheta[i] = theta[i]
 	}
 
-	bestMSE := CalculateMSEParallel(entries, k)
-	fmt.Printf("Initial MSE: %.10f\n", bestMSE)
+	lossName := strings.ToUpper(*lossType)
+	bestLoss := CalculateMSEParallel(entries, k)
+	fmt.Printf("Initial %s: %.10f\n", lossName, bestLoss)
 	fmt.Printf("Starting SPSA optimization for %d iterations...\n", iterations)
 
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -73,18 +75,18 @@ func RunSPSA(entries []PrecomputedEntry, k float64, iterations int) {
 		for i, p := range params {
 			*p = int(math.Round(theta[i] + ck*delta[i]))
 		}
-		plusMSE := CalculateMSEParallel(entries, k)
+		plusLoss := CalculateMSEParallel(entries, k)
 
-		// 4. Evaluate MSE at (theta - ck*Delta).
+		// 4. Evaluate loss at (theta - ck*Delta).
 		for i, p := range params {
 			*p = int(math.Round(theta[i] - ck*delta[i]))
 		}
-		minusMSE := CalculateMSEParallel(entries, k)
+		minusLoss := CalculateMSEParallel(entries, k)
 
 		// 5. Update theta using the Simultaneous Perturbation gradient estimate.
-		// Gradient g_k = (plusMSE - minusMSE) / (2 * ck * Delta)
+		// Gradient g_k = (plusLoss - minusLoss) / (2 * ck * Delta)
 		// Since Delta_i is ±1, 1/Delta_i is simply Delta_i.
-		gradientMultiplier := ak * (plusMSE - minusMSE) / (2.0 * ck)
+		gradientMultiplier := ak * (plusLoss - minusLoss) / (2.0 * ck)
 		for i := range theta {
 			theta[i] -= gradientMultiplier * delta[i]
 			// Sync the actual evaluation parameters with the rounded theta values.
@@ -93,14 +95,14 @@ func RunSPSA(entries []PrecomputedEntry, k float64, iterations int) {
 
 		// 6. Progress reporting and live-saving.
 		if iter%10 == 0 || iter == 1 {
-			currentMSE := CalculateMSEParallel(entries, k)
-			if currentMSE < bestMSE {
-				bestMSE = currentMSE
+			currentLoss := CalculateMSEParallel(entries, k)
+			if currentLoss < bestLoss {
+				bestLoss = currentLoss
 				copy(bestTheta, theta)
 				saveParams(*saveFile, params, names)
-				fmt.Printf("Iteration %d | ak: %.6f | ck: %.6f | MSE: %.10f (Improved!)\n", iter, ak, ck, currentMSE)
+				fmt.Printf("Iteration %d | ak: %.6f | ck: %.6f | %s: %.10f (Improved!)\n", iter, ak, ck, lossName, currentLoss)
 			} else if iter%100 == 0 {
-				fmt.Printf("Iteration %d | MSE: %.10f\n", iter, currentMSE)
+				fmt.Printf("Iteration %d | %s: %.10f\n", iter, lossName, currentLoss)
 			}
 		}
 
