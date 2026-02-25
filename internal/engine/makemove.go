@@ -30,10 +30,8 @@ func (b *Board) addPiece(sq types.Square, p types.Piece) {
 	idxW := nnue.GetFeatureIndex(p, sq)
 	idxB := nnue.GetFeatureIndex(p.FlippedColor(), sq.Flipped())
 
-	for i := 0; i < types.L1Size; i++ {
-		b.Accumulators[0][i] += nnue.CurrentNetwork.FeatureWeights[idxW][i]
-		b.Accumulators[1][i] += nnue.CurrentNetwork.FeatureWeights[idxB][i]
-	}
+	nnue.UpdateAccumulator(&b.Accumulators[0], nnue.CurrentNetwork.FeatureWeights[idxW][:])
+	nnue.UpdateAccumulator(&b.Accumulators[1], nnue.CurrentNetwork.FeatureWeights[idxB][:])
 }
 
 func (b *Board) removePiece(sq types.Square, p types.Piece) {
@@ -50,10 +48,8 @@ func (b *Board) removePiece(sq types.Square, p types.Piece) {
 	idxW := nnue.GetFeatureIndex(p, sq)
 	idxB := nnue.GetFeatureIndex(p.FlippedColor(), sq.Flipped())
 
-	for i := 0; i < types.L1Size; i++ {
-		b.Accumulators[0][i] -= nnue.CurrentNetwork.FeatureWeights[idxW][i]
-		b.Accumulators[1][i] -= nnue.CurrentNetwork.FeatureWeights[idxB][i]
-	}
+	nnue.RemoveAccumulator(&b.Accumulators[0], nnue.CurrentNetwork.FeatureWeights[idxW][:])
+	nnue.RemoveAccumulator(&b.Accumulators[1], nnue.CurrentNetwork.FeatureWeights[idxB][:])
 }
 
 // MakeMove updates the board state with the given move.
@@ -327,10 +323,8 @@ func (b *Board) RefreshAccumulators() {
 				idxW := nnue.GetFeatureIndex(p, sq)
 				idxB := nnue.GetFeatureIndex(p.FlippedColor(), sq.Flipped())
 
-				for i := 0; i < types.L1Size; i++ {
-					b.Accumulators[0][i] += nnue.CurrentNetwork.FeatureWeights[idxW][i]
-					b.Accumulators[1][i] += nnue.CurrentNetwork.FeatureWeights[idxB][i]
-				}
+				nnue.UpdateAccumulator(&b.Accumulators[0], nnue.CurrentNetwork.FeatureWeights[idxW][:])
+				nnue.UpdateAccumulator(&b.Accumulators[1], nnue.CurrentNetwork.FeatureWeights[idxB][:])
 			}
 		}
 	}

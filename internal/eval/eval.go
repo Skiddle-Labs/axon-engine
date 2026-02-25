@@ -2,6 +2,7 @@ package eval
 
 import (
 	"github.com/Skiddle-Labs/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/nnue"
 	"github.com/Skiddle-Labs/axon-engine/internal/types"
 )
 
@@ -9,6 +10,10 @@ import (
 func Evaluate(b *engine.Board) int {
 	if isInsufficientMaterial(b) {
 		return 0
+	}
+
+	if nnue.UseNNUE && nnue.CurrentNetwork != nil {
+		return nnue.EvaluateForward(&b.Accumulators[0], &b.Accumulators[1], b.SideToMove)
 	}
 
 	mgW, egW, _ := calculatePhase(b)

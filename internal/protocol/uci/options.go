@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Skiddle-Labs/axon-engine/internal/engine"
+	"github.com/Skiddle-Labs/axon-engine/internal/nnue"
 	"github.com/Skiddle-Labs/axon-engine/internal/search"
 )
 
@@ -21,6 +22,8 @@ func (u *UCI) handleUCI() {
 	u.send("option name Clear Hash type button")
 	u.send("option name OwnBook type check default true")
 	u.send("option name BookPath type string default ")
+	u.send("option name EvalFile type string default ")
+	u.send("option name Use NNUE type check default true")
 
 	u.send("uciok")
 }
@@ -82,5 +85,13 @@ func (u *UCI) handleSetOption(fields []string) {
 				u.book = book
 			}
 		}
+	case "evalfile":
+		if value != "" {
+			if err := nnue.LoadNetwork(value); err == nil {
+				u.board.RefreshAccumulators()
+			}
+		}
+	case "use nnue":
+		nnue.UseNNUE = (value == "true")
 	}
 }
