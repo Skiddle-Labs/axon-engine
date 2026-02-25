@@ -70,14 +70,14 @@ This document tracks the planned improvements and current progress of the Axon c
 - [x] **UCI Option Support**: Expose search knobs via UCI for easier tuning.
 
 ## 8. Advanced Search & Optimization
-- [ ] **Multi-Cut Pruning**: Prune nodes if multiple moves fail high at reduced depth.
+- [x] **Multi-Cut Pruning**: Prune nodes if multiple moves fail high at reduced depth.
 - [ ] **Memory Prefetching**: Optimize TT lookups by prefetching memory before access.
 - [ ] **AVX-512 NNUE**: Specialized kernels for ultra-high performance on modern hardware.
-- [ ] **Double Extensions**: Detect and extend search for extremely critical tactical lines.
-- [ ] **Internal Iterative Reductions (IIR)**: Reduce search depth when no TT move is available.
-- [ ] **History-Based LMR**: Scale move reductions based on historical success/failure of moves.
+- [x] **Double Extensions**: Detect and extend search for extremely critical tactical lines.
+- [x] **Internal Iterative Reductions (IIR)**: Reduce search depth when no TT move is available.
+- [x] **History-Based LMR**: Scale move reductions based on historical success/failure of moves.
 - [x] **Correction History**: Learn and apply systematic errors in static evaluation during search.
-- [ ] **Capture History**: Use historical capture success to improve move ordering in Quiescence search.
+- [x] **Capture History**: Use historical capture success to improve move ordering in Quiescence search.
 
 ## 9. Development & Support Tooling
 - [ ] **EPD Processing Suite**: Specialized tools for shuffling, merging, and filtering blunders from datasets.
@@ -92,7 +92,7 @@ This document tracks the planned improvements and current progress of the Axon c
 
 ## 11. Future Extensions
 - [ ] **Chess960 (FRC)**: Support for Fischer Random Chess movegen and castling rules (Planned for after standard chess maturity).
-- [ ] **UCI_ShowWDL**: Display Win/Draw/Loss probabilities in UCI output for better user feedback.
+- [x] **UCI_ShowWDL**: Display Win/Draw/Loss probabilities in UCI output for better user feedback.
 
 ## 12. Advanced UCI Protocol & Options
 - [ ] **Strength Limiting**: Implementation of `UCI_LimitStrength` and `UCI_Elo` for casual play.

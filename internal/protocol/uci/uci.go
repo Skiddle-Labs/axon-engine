@@ -24,6 +24,7 @@ type UCI struct {
 	multiPV      int
 	moveOverhead int
 	slowMover    int
+	showWDL      bool
 
 	// Book settings
 	book         *engine.PolyglotBook
@@ -50,6 +51,7 @@ func NewUCI(r io.Reader, w io.Writer) *UCI {
 		moveOverhead: 10,
 		slowMover:    100,
 		bookDepth:    255,
+		showWDL:      false,
 	}
 }
 

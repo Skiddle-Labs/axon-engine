@@ -178,6 +178,7 @@ func (b *Board) MakeMove(m Move) bool {
 	}
 
 	// 5. Update castling rights
+	b.Hash ^= CastlingKeys[b.Castling]
 	b.Castling &= castlingMask[from]
 	b.Castling &= castlingMask[to]
 	b.Hash ^= CastlingKeys[b.Castling]

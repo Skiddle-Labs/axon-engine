@@ -58,6 +58,7 @@ func (u *UCI) handleGo(parts []string) {
 	u.engine = search.NewEngine(u.board)
 	u.engine.Threads = u.threads
 	u.engine.MultiPV = u.multiPV
+	u.engine.ShowWDL = u.showWDL
 	u.engine.HistoryTable = &u.historyTable
 	u.engine.CounterMoves = &u.counterMoves
 	u.isPondering = false

@@ -27,6 +27,9 @@ var (
 	NMPDivisor      = 6
 	LMR_Base        = 0.75
 	LMR_Multiplier  = 2.25
+	MC_R            = 3
+	MC_M            = 6
+	MC_C            = 3
 )
 
 // Engine represents a search instance.
@@ -43,6 +46,7 @@ type Engine struct {
 	Threads int
 	MultiPV int
 	Silent  bool
+	ShowWDL bool
 
 	RootExcludedMoves []engine.Move
 
@@ -54,6 +58,7 @@ type Engine struct {
 	localNodes      uint64
 	KillerMoves     [128][2]engine.Move
 	HistoryTable    *[2][7][64]int
+	CaptureHistory  *[2][7][7][64]int
 	CounterMoves    *[64][64]engine.Move
 	CorrectionTable *[2][16384]int16
 }
@@ -69,7 +74,9 @@ func NewEngine(b *engine.Board) *Engine {
 		TT:              GlobalTT,
 		Threads:         1,
 		MultiPV:         1,
+		ShowWDL:         false,
 		HistoryTable:    &[2][7][64]int{},
+		CaptureHistory:  &[2][7][7][64]int{},
 		CounterMoves:    &[64][64]engine.Move{},
 		CorrectionTable: &[2][16384]int16{},
 	}
@@ -84,6 +91,9 @@ func ResetSearchParameters() {
 	NMPDivisor = 6
 	LMR_Base = 0.75
 	LMR_Multiplier = 2.25
+	MC_R = 3
+	MC_M = 6
+	MC_C = 3
 	UpdateLMR(LMR_Base, LMR_Multiplier)
 }
 
@@ -134,6 +144,7 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 			bCopy := *e.Board
 			helper := NewEngine(&bCopy)
 			helper.HistoryTable = e.HistoryTable
+			helper.CaptureHistory = e.CaptureHistory
 			helper.CounterMoves = e.CounterMoves
 			helper.CorrectionTable = e.CorrectionTable
 			helper.TT = e.TT
@@ -363,16 +374,41 @@ func (e *Engine) printInfo(depth, score int, bestMove engine.Move, multipv int) 
 		pvStr = bestMove.String()
 	}
 
+	wdlStr := ""
+	if e.ShowWDL {
+		win, draw, loss := CalculateWDL(score, e.Board.Ply)
+		wdlStr = fmt.Sprintf(" wdl %d %d %d", win, draw, loss)
+	}
+
 	if score > MateScore-500 {
 		mateIn := (MateScore - score + 1) / 2
-		fmt.Printf("info depth %d multipv %d score mate %d nodes %d nps %d hashfull %d time %d pv %s\n",
-			depth, multipv, mateIn, nodes, nps, hashfull, int(duration*1000), pvStr)
+		fmt.Printf("info depth %d multipv %d score mate %d%s nodes %d nps %d hashfull %d time %d pv %s\n",
+			depth, multipv, mateIn, wdlStr, nodes, nps, hashfull, int(duration*1000), pvStr)
 	} else if score < -MateScore+500 {
 		mateIn := (MateScore + score + 1) / 2
-		fmt.Printf("info depth %d multipv %d score mate -%d nodes %d nps %d hashfull %d time %d pv %s\n",
-			depth, multipv, mateIn, nodes, nps, hashfull, int(duration*1000), pvStr)
+		fmt.Printf("info depth %d multipv %d score mate -%d%s nodes %d nps %d hashfull %d time %d pv %s\n",
+			depth, multipv, mateIn, wdlStr, nodes, nps, hashfull, int(duration*1000), pvStr)
 	} else {
-		fmt.Printf("info depth %d multipv %d score cp %d nodes %d nps %d hashfull %d time %d pv %s\n",
-			depth, multipv, score, nodes, nps, hashfull, int(duration*1000), pvStr)
+		fmt.Printf("info depth %d multipv %d score cp %d%s nodes %d nps %d hashfull %d time %d pv %s\n",
+			depth, multipv, score, wdlStr, nodes, nps, hashfull, int(duration*1000), pvStr)
 	}
+}
+
+// CalculateWDL converts a centipawn score to Win/Draw/Loss probabilities (out of 1000).
+func CalculateWDL(score, ply int) (win, draw, loss int) {
+	// Simple logistic model for win probability.
+	// The constant 0.004 is a standard K-factor for CP -> Win% conversion.
+	s := float64(score)
+	winProb := 1.0 / (1.0 + math.Exp(-0.004*s))
+
+	// Draw probability: peaks at score 0 and increases with game length (ply).
+	// This captures the tendency for endgames to be more drawish.
+	drawProb := math.Exp(-0.002*math.Abs(s)) * (0.3 + 0.5*math.Min(1.0, float64(ply)/100.0))
+
+	// Normalize to 1000
+	win = int(winProb * (1.0 - drawProb) * 1000)
+	draw = int(drawProb * 1000)
+	loss = 1000 - win - draw
+
+	return
 }

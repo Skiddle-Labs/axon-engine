@@ -64,11 +64,11 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 		}
 	}
 
-	// 6. Internal Iterative Deepening (IID)
-	// If we don't have a TT move at a high depth, perform a shallow search to find one.
-	if depth >= 5 && ttMove == engine.NoMove && !inCheck && ply > 0 {
-		e.negamax(depth-2, alpha, beta, ply, engine.NoMove)
-		_, ttMove, _ = e.TT.Probe(e.Board.Hash, depth, alpha, beta, ply)
+	// 6. Internal Iterative Reductions (IIR)
+	// If we don't have a TT move at a decent depth, reduce search depth as the
+	// node is less likely to produce a cutoff.
+	if depth >= 3 && ttMove == engine.NoMove && !inCheck {
+		depth--
 	}
 
 	// 7. Singular Extensions
@@ -79,6 +79,10 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 		score := e.negamax((depth-1)/2, singularBeta-1, singularBeta, ply, ttMove)
 		if score < singularBeta {
 			extension = 1
+			// Double Extension: if the move is extremely singular, extend even further.
+			if score < singularBeta-2*depth {
+				extension = 2
+			}
 		}
 	}
 
@@ -110,6 +114,33 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 	// 10. Move Generation and Ordering
 	ml := e.Board.GenerateMoves()
 	e.orderMoves(&ml, ttMove, ply)
+
+	// 10.5 Multi-Cut Pruning (MC)
+	// If multiple moves fail high at a reduced depth, prune the node.
+	if depth >= 7 && !inCheck && excludedMove == engine.NoMove && ply > 0 {
+		cutCount := 0
+		mcDepth := depth - 1 - MC_R
+		mcMoves := MC_M
+		if mcMoves > ml.Count {
+			mcMoves = ml.Count
+		}
+
+		for i := 0; i < mcMoves; i++ {
+			move := ml.Moves[i]
+			if !e.Board.MakeMove(move) {
+				continue
+			}
+			score := -e.negamax(mcDepth, -beta, -beta+1, ply+1, engine.NoMove)
+			e.Board.UnmakeMove(move)
+
+			if score >= beta {
+				cutCount++
+				if cutCount >= MC_C {
+					return beta
+				}
+			}
+		}
+	}
 
 	alphaOrig := alpha
 	bestMove := engine.NoMove
@@ -240,6 +271,17 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 				if ply < 128 && (move == e.KillerMoves[ply][0] || move == e.KillerMoves[ply][1]) {
 					reduction--
 				}
+
+				// History-based LMR refinement: scale reductions based on past success
+				if e.HistoryTable != nil {
+					hist := e.HistoryTable[e.Board.SideToMove][e.Board.PieceAt(move.From()).Type()][move.To()]
+					if hist > 4000 {
+						reduction--
+					} else if hist < -4000 {
+						reduction++
+					}
+				}
+
 				if reduction < 0 {
 					reduction = 0
 				}
@@ -273,7 +315,16 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 		// Beta Cutoff (Fail-High)
 		if score >= beta {
 			// Update search heuristics
-			if !isCapture && ply < 128 {
+			if isCapture {
+				if e.CaptureHistory != nil {
+					piece := e.Board.PieceAt(move.From()).Type()
+					victim := e.Board.PieceAt(move.To()).Type()
+					if move.Flags() == engine.EnPassantFlag {
+						victim = types.Pawn
+					}
+					e.CaptureHistory[e.Board.SideToMove][piece][victim][move.To()] += depth * depth
+				}
+			} else if ply < 128 {
 				// Killer moves
 				if move != e.KillerMoves[ply][0] {
 					e.KillerMoves[ply][1] = e.KillerMoves[ply][0]
@@ -292,14 +343,21 @@ func (e *Engine) negamax(depth, alpha, beta, ply int, excludedMove engine.Move) 
 					e.CounterMoves[prevMove.From()][prevMove.To()] = move
 				}
 
-				// History penalty for failed quiet moves in this node
-				if e.HistoryTable != nil {
-					for j := 0; j < legalMoves-1; j++ {
-						m := triedMoves[j]
-						if m.Flags()&engine.CaptureFlag == 0 {
+				// History penalty for failed moves in this node
+				for j := 0; j < legalMoves-1; j++ {
+					m := triedMoves[j]
+					if m.Flags()&engine.CaptureFlag == 0 {
+						if e.HistoryTable != nil {
 							p := e.Board.PieceAt(m.From()).Type()
 							e.HistoryTable[e.Board.SideToMove][p][m.To()] -= depth * depth
 						}
+					} else if e.CaptureHistory != nil {
+						p := e.Board.PieceAt(m.From()).Type()
+						v := e.Board.PieceAt(m.To()).Type()
+						if m.Flags() == engine.EnPassantFlag {
+							v = types.Pawn
+						}
+						e.CaptureHistory[e.Board.SideToMove][p][v][m.To()] -= depth * depth
 					}
 				}
 			}
@@ -359,6 +417,9 @@ func (e *Engine) quiescence(alpha, beta, ply int) int {
 	ml := e.Board.GenerateCaptures()
 	e.orderMoves(&ml, engine.NoMove, ply)
 
+	var triedCaptures [64]engine.Move
+	numTried := 0
+
 	for i := 0; i < ml.Count; i++ {
 		move := ml.Moves[i]
 
@@ -375,11 +436,34 @@ func (e *Engine) quiescence(alpha, beta, ply int) int {
 		e.Board.UnmakeMove(move)
 
 		if score >= beta {
+			// Update Capture History on cutoff in quiescence
+			if e.CaptureHistory != nil {
+				p := e.Board.PieceAt(move.From()).Type()
+				v := e.Board.PieceAt(move.To()).Type()
+				if move.Flags() == engine.EnPassantFlag {
+					v = types.Pawn
+				}
+				e.CaptureHistory[e.Board.SideToMove][p][v][move.To()] += 10
+
+				// Penalize failed captures
+				for j := 0; j < numTried; j++ {
+					m := triedCaptures[j]
+					pj := e.Board.PieceAt(m.From()).Type()
+					vj := e.Board.PieceAt(m.To()).Type()
+					if m.Flags() == engine.EnPassantFlag {
+						vj = types.Pawn
+					}
+					e.CaptureHistory[e.Board.SideToMove][pj][vj][m.To()] -= 10
+				}
+			}
 			return beta
 		}
+
 		if score > alpha {
 			alpha = score
 		}
+		triedCaptures[numTried] = move
+		numTried++
 	}
 
 	return alpha

@@ -24,13 +24,17 @@ func (u *UCI) handleUCI() {
 	u.send("option name BookPath type string default ")
 	u.send("option name EvalFile type string default ")
 	u.send("option name Use NNUE type check default true")
+	u.send("option name UCI_ShowWDL type check default false")
 	u.send("option name AspirationDelta type spin default 15 min 1 max 500")
 	u.send("option name RFP_Margin type spin default 75 min 0 max 5000")
 	u.send("option name FP_Margin type spin default 100 min 0 max 5000")
 	u.send("option name NMP_Base type spin default 3 min 1 max 10")
 	u.send("option name NMP_Divisor type spin default 6 min 1 max 20")
-	u.send("option name LMR_Base type spin default 75 min 0 max 500")
-	u.send("option name LMR_Multiplier type spin default 225 min 0 max 1000")
+	u.send("option name LMR_Base type spin default 75 min 0 max 200")
+	u.send("option name LMR_Multiplier type spin default 225 min 0 max 500")
+	u.send("option name MC_R type spin default 3 min 1 max 10")
+	u.send("option name MC_M type spin default 6 min 1 max 20")
+	u.send("option name MC_C type spin default 3 min 1 max 10")
 
 	u.send("uciok")
 }
@@ -100,6 +104,8 @@ func (u *UCI) handleSetOption(fields []string) {
 		}
 	case "use nnue":
 		nnue.UseNNUE = (value == "true")
+	case "uci_showwdl":
+		u.showWDL = (value == "true")
 	case "aspirationdelta":
 		if v, err := strconv.Atoi(value); err == nil {
 			search.AspirationDelta = v
@@ -129,6 +135,18 @@ func (u *UCI) handleSetOption(fields []string) {
 		if v, err := strconv.Atoi(value); err == nil {
 			search.LMR_Multiplier = float64(v) / 100.0
 			search.UpdateLMR(search.LMR_Base, search.LMR_Multiplier)
+		}
+	case "mc_r":
+		if v, err := strconv.Atoi(value); err == nil {
+			search.MC_R = v
+		}
+	case "mc_m":
+		if v, err := strconv.Atoi(value); err == nil {
+			search.MC_M = v
+		}
+	case "mc_c":
+		if v, err := strconv.Atoi(value); err == nil {
+			search.MC_C = v
 		}
 	}
 }

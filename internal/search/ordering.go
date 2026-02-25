@@ -45,6 +45,10 @@ func (e *Engine) orderMoves(ml *engine.MoveList, ttMove engine.Move, ply int) {
 			} else {
 				scores[i] = 10000 + mvvLva[victim][piece]
 			}
+
+			if e.CaptureHistory != nil {
+				scores[i] += e.CaptureHistory[e.Board.SideToMove][piece][victim][move.To()]
+			}
 		} else if flags&0x8000 != 0 {
 			scores[i] = 20000
 		} else if ply < 128 && move == e.KillerMoves[ply][0] {
