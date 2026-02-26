@@ -35,6 +35,12 @@ func evaluatePawns(b *engine.Board, c types.Color) (int, int) {
 		if isIsolated {
 			mg += PawnIsolatedMG
 			eg += PawnIsolatedEG
+
+			// Penalty for isolated pawn on an open file
+			if (enemyPawns & (engine.FileA << file)) == 0 {
+				mg += IsolatedPawnOpenFileMG
+				eg += IsolatedPawnOpenFileEG
+			}
 		}
 
 		// 3. Connected and Phalanx pawns
@@ -166,7 +172,24 @@ func evaluatePawns(b *engine.Board, c types.Color) (int, int) {
 			mg += bonus * PawnPassedMG
 			eg += bonus * PawnPassedEG
 
-			// 6. Connected passed pawns
+			// 6. Blockade penalty
+			// A passed pawn's strength is significantly reduced if an enemy piece is blockading its advance.
+			stopSq := types.NoSquare
+			if c == types.White && rank < 7 {
+				stopSq = types.NewSquare(file, rank+1)
+			} else if c == types.Black && rank > 0 {
+				stopSq = types.NewSquare(file, rank-1)
+			}
+
+			if stopSq != types.NoSquare {
+				blocker := b.PieceAt(stopSq)
+				if blocker != types.NoPiece && blocker.Color() == them {
+					mg -= 15
+					eg -= 25
+				}
+			}
+
+			// 7. Connected passed pawns
 			if supported || phalanx {
 				mg += ConnectedPassedMG
 				eg += ConnectedPassedEG

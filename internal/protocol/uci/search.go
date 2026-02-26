@@ -168,12 +168,15 @@ func (u *UCI) handleGo(parts []string) {
 	go func(e *search.Engine, d int) {
 		bestMove := e.Search(d)
 
-		// If we are in ponder mode, wait for ponderhit or stop
-		for u.isPondering {
+		// If we are in ponder mode, wait for ponderhit or stop.
+		// We use a small sleep to avoid busy-waiting.
+		for u.isPondering && atomic.LoadInt32(e.Stopped) == 0 {
 			time.Sleep(10 * time.Millisecond)
-			if atomic.LoadInt32(e.Stopped) != 0 {
-				break
-			}
+		}
+
+		// Don't report bestmove if this search instance was superseded by a new 'go' command
+		if atomic.LoadInt32(e.Stopped) != 0 && u.engine != e {
+			return
 		}
 
 		if bestMove == engine.NoMove {

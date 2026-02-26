@@ -54,6 +54,47 @@ func (b Bitboard) MSB() types.Square {
 	return types.Square(63 - bits.LeadingZeros64(uint64(b)))
 }
 
+// ManhattanDistance returns the Manhattan distance between two squares.
+func ManhattanDistance(s1, s2 types.Square) int {
+	fileDist := s1.File() - s2.File()
+	if fileDist < 0 {
+		fileDist = -fileDist
+	}
+	rankDist := s1.Rank() - s2.Rank()
+	if rankDist < 0 {
+		rankDist = -rankDist
+	}
+	return fileDist + rankDist
+}
+
+// CenterDistance returns the distance of a square from the center of the board.
+func CenterDistance(s types.Square) int {
+	file := s.File()
+	rank := s.Rank()
+	// Distance to the central 4x4 region (ranks 3-6, files C-F) or 2x2.
+	// We use the distance to the 3.5, 3.5 center point.
+	df := 0
+	if file < 3 {
+		df = 3 - file
+	} else if file > 4 {
+		df = file - 4
+	}
+	dr := 0
+	if rank < 3 {
+		dr = 3 - rank
+	} else if rank > 4 {
+		dr = rank - 4
+	}
+	return df + dr
+}
+
+// IsLongDiagonal returns true if the square is on one of the two main diagonals.
+func IsLongDiagonal(s types.Square) bool {
+	file := s.File()
+	rank := s.Rank()
+	return file == rank || file == (7-rank)
+}
+
 // Bitboard constants for common sets of squares.
 const (
 	FileA Bitboard = 0x0101010101010101 << iota

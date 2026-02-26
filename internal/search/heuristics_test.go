@@ -12,8 +12,8 @@ func TestCaptureHistory(t *testing.T) {
 	// Position with multiple captures to ensure CaptureHistory is exercised.
 	b.SetFEN("r1bqkbnr/pppp1ppp/2n5/4p3/3P4/5N2/PPP1PPPP/RNBQKB1R w KQkq - 0 1")
 
-	GlobalTT.Clear()
 	e := NewEngine(b)
+	e.TT = NewTranspositionTable(1)
 
 	// Depth enough to trigger cutoffs and history updates.
 	e.Search(6)
@@ -44,11 +44,11 @@ func TestCorrectionHistory(t *testing.T) {
 	b := engine.NewBoard()
 	b.SetFEN(engine.StartFEN)
 
-	GlobalTT.Clear()
 	e := NewEngine(b)
+	e.TT = NewTranspositionTable(1)
 
 	// Run search. Correction history updates usually happen on TT stores at non-PV nodes.
-	e.Search(8)
+	e.Search(7)
 
 	found := false
 Loop:
@@ -71,9 +71,9 @@ func TestHistoryTable(t *testing.T) {
 	b := engine.NewBoard()
 	b.SetFEN(engine.StartFEN)
 
-	GlobalTT.Clear()
 	e := NewEngine(b)
-	e.Search(6)
+	e.TT = NewTranspositionTable(1)
+	e.Search(7)
 
 	found := false
 Loop:

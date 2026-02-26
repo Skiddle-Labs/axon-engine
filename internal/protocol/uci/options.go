@@ -100,6 +100,9 @@ func (u *UCI) handleSetOption(fields []string) {
 		if value != "" {
 			if err := nnue.LoadNetwork(value); err == nil {
 				u.board.RefreshAccumulators()
+				u.send("info string Loaded network: " + value)
+			} else {
+				u.send("info string Error loading network: " + err.Error())
 			}
 		}
 	case "use nnue":

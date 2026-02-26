@@ -12,11 +12,48 @@ func Evaluate(b *engine.Board) int {
 		return 0
 	}
 
-	if nnue.UseNNUE && nnue.CurrentNetwork != nil {
-		return nnue.EvaluateForward(&b.Accumulators[0], &b.Accumulators[1], b.SideToMove)
+	mgW, egW, phase := calculatePhase(b)
+	hasNNUE := nnue.UseNNUE && nnue.CurrentNetwork != nil
+
+	if hasNNUE {
+		nnueScore := nnue.EvaluateForward(&b.Accumulators[0], &b.Accumulators[1], b.SideToMove)
+
+		// Optimization: Use pure NNUE in midgame for maximum search speed.
+		// In the endgame (phase < 12), we blend with HCE for better specialized knowledge.
+		if phase >= 12 {
+			return nnueScore
+		}
+
+		// Calculate HCE only when needed for blending in the endgame.
+		hceScore := calculateHCE(b, mgW, egW, phase)
+
+		// Blend NNUE (80%) and HCE (20%) for robust endgame play.
+		perspectiveHCE := hceScore
+		if b.SideToMove == types.Black {
+			perspectiveHCE = -hceScore
+		}
+
+		return (nnueScore*8 + perspectiveHCE*2) / 10
 	}
 
-	mgW, egW, _ := calculatePhase(b)
+	hceScore := calculateHCE(b, mgW, egW, phase)
+	if b.SideToMove == types.Black {
+		return -hceScore
+	}
+	return hceScore
+}
+
+// calculateHCE computes the hand-coded evaluation of the board from White's perspective.
+func calculateHCE(b *engine.Board, mgW, egW, phase int) int {
+	// Tempo bonus
+	tempoMg, tempoEg := 0, 0
+	if b.SideToMove == types.White {
+		tempoMg = TempoMG
+		tempoEg = TempoEG
+	} else {
+		tempoMg = -TempoMG
+		tempoEg = -TempoEG
+	}
 
 	// Pawn Structure Cache
 	var pMgW, pEgW, pMgB, pEgB int
@@ -34,34 +71,39 @@ func Evaluate(b *engine.Board) int {
 	mgWhite, egWhite := evaluateColor(b, types.White, pMgW, pEgW)
 	mgBlack, egBlack := evaluateColor(b, types.Black, pMgB, pEgB)
 
-	mgScore := mgWhite - mgBlack
-	egScore := egWhite - egBlack
+	mgScore := mgWhite - mgBlack + tempoMg
+	egScore := egWhite - egBlack + tempoEg
 
-	score := (mgScore*mgW + egScore*egW) / TotalPhase
+	hceScore := (mgScore*mgW + egScore*egW) / TotalPhase
+
+	// 8. Mop-up evaluation (driving enemy king to the edge)
+	if hceScore > 300 || hceScore < -300 {
+		hceScore += evaluateMopUp(b, hceScore, phase)
+	}
 
 	// Scale evaluation in drawish endgames
-	score = scaleEndgame(b, score)
-
-	if b.SideToMove == types.Black {
-		return -score
-	}
-	return score
+	return scaleEndgame(b, hceScore)
 }
 
 // calculatePhase determines the game phase for tapered evaluation.
+// Returns mgWeight, egWeight, and phase (where TotalPhase is opening and 0 is endgame).
 func calculatePhase(b *engine.Board) (int, int, int) {
-	phase := TotalPhase
-	phase -= (b.Pieces[types.White][types.Knight].Count() + b.Pieces[types.Black][types.Knight].Count()) * KnightPhase
-	phase -= (b.Pieces[types.White][types.Bishop].Count() + b.Pieces[types.Black][types.Bishop].Count()) * BishopPhase
-	phase -= (b.Pieces[types.White][types.Rook].Count() + b.Pieces[types.Black][types.Rook].Count()) * RookPhase
-	phase -= (b.Pieces[types.White][types.Queen].Count() + b.Pieces[types.Black][types.Queen].Count()) * QueenPhase
+	phase := 0
+	phase += b.Pieces[types.White][types.Knight].Count() * KnightPhase
+	phase += b.Pieces[types.Black][types.Knight].Count() * KnightPhase
+	phase += b.Pieces[types.White][types.Bishop].Count() * BishopPhase
+	phase += b.Pieces[types.Black][types.Bishop].Count() * BishopPhase
+	phase += b.Pieces[types.White][types.Rook].Count() * RookPhase
+	phase += b.Pieces[types.Black][types.Rook].Count() * RookPhase
+	phase += b.Pieces[types.White][types.Queen].Count() * QueenPhase
+	phase += b.Pieces[types.Black][types.Queen].Count() * QueenPhase
 
-	if phase < 0 {
-		phase = 0
+	if phase > TotalPhase {
+		phase = TotalPhase
 	}
 
-	egW := phase
-	mgW := TotalPhase - phase
+	mgW := phase
+	egW := TotalPhase - phase
 	return mgW, egW, phase
 }
 
@@ -98,6 +140,9 @@ func evaluateColor(b *engine.Board, c types.Color, pMg, pEg int) (int, int) {
 
 	// 6. Space Evaluation
 	mg += evaluateSpace(b, c)
+
+	// 8. King proximity to passed pawns in endgames
+	eg += evaluateKingPassedPawnProximity(b, c)
 
 	// 7. Bishop vs Knight Scaling
 	numPawns := b.Pieces[c][types.Pawn].Count()
@@ -164,6 +209,102 @@ func evaluateSpace(b *engine.Board, c types.Color) int {
 	score = safeSpace.Count() * SpaceMG
 
 	return score
+}
+
+// evaluateMopUp encourages pushing the enemy king to the corners when ahead.
+func evaluateMopUp(b *engine.Board, score, phase int) int {
+	// Only applicable if one side has a significant material advantage
+	// and we are approaching the endgame.
+	if phase > 10 {
+		return 0
+	}
+
+	bonus := 0
+	us := types.White
+	them := types.Black
+	if score < 0 {
+		us = types.Black
+		them = types.White
+	}
+
+	enemyKingSq := b.Pieces[them][types.King].LSB()
+	ourKingSq := b.Pieces[us][types.King].LSB()
+
+	// 1. Centralization bonus (push enemy king to edges)
+	bonus += engine.CenterDistance(enemyKingSq) * MopUpBonus
+
+	// 2. Proximity bonus (keep our king near enemy king)
+	dist := engine.ManhattanDistance(ourKingSq, enemyKingSq)
+	bonus += (14 - dist) * (MopUpBonus / 2)
+
+	// Scale by phase (stronger in deep endgame)
+	bonus = (bonus * (TotalPhase - phase)) / TotalPhase
+
+	if score < 0 {
+		return -bonus
+	}
+	return bonus
+}
+
+// evaluateKingPassedPawnProximity rewards the king for being near passed pawns in the endgame.
+func evaluateKingPassedPawnProximity(b *engine.Board, c types.Color) int {
+	bonus := 0
+	kingSq := b.Pieces[c][types.King].LSB()
+	them := c ^ 1
+
+	// Support our own passed pawns
+	pawns := b.Pieces[c][types.Pawn]
+	for pawns != 0 {
+		sq := pawns.PopLSB()
+		if isPassed(b, c, sq) {
+			dist := engine.ManhattanDistance(kingSq, sq)
+			bonus += (7 - dist) * KingNearPassedPawnEG
+		}
+	}
+
+	// Stay near enemy passed pawns to stop them
+	enemyPawns := b.Pieces[them][types.Pawn]
+	for enemyPawns != 0 {
+		sq := enemyPawns.PopLSB()
+		if isPassed(b, them, sq) {
+			dist := engine.ManhattanDistance(kingSq, sq)
+			bonus += (7 - dist) * KingNearPassedPawnEG
+		}
+	}
+
+	return bonus
+}
+
+// isPassed is a helper to determine if a pawn is passed.
+func isPassed(b *engine.Board, c types.Color, sq types.Square) bool {
+	file := sq.File()
+	rank := sq.Rank()
+	enemyPawns := b.Pieces[c^1][types.Pawn]
+
+	frontMask := engine.Bitboard(0)
+	if c == types.White {
+		for r := rank + 1; r <= 7; r++ {
+			frontMask.Set(types.NewSquare(file, r))
+			if file > 0 {
+				frontMask.Set(types.NewSquare(file-1, r))
+			}
+			if file < 7 {
+				frontMask.Set(types.NewSquare(file+1, r))
+			}
+		}
+	} else {
+		for r := rank - 1; r >= 0; r-- {
+			frontMask.Set(types.NewSquare(file, r))
+			if file > 0 {
+				frontMask.Set(types.NewSquare(file-1, r))
+			}
+			if file < 7 {
+				frontMask.Set(types.NewSquare(file+1, r))
+			}
+		}
+	}
+
+	return (frontMask & enemyPawns).IsEmpty()
 }
 
 // getPST maps a square to its value in the Piece-Square Table.

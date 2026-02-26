@@ -17,29 +17,16 @@ func evaluatePieces(b *engine.Board, c types.Color) (int, int) {
 		pieces := b.Pieces[c][pt]
 		for pieces != 0 {
 			sq := pieces.PopLSB()
+			rank := sq.Rank()
+			file := sq.File()
 
-			// 1. Material Values
+			// 1. Material Values and Positional Features
+			var attacks, mobility engine.Bitboard
 			switch pt {
 			case types.Knight:
 				mg += KnightMG
 				eg += KnightEG
-			case types.Bishop:
-				mg += BishopMG
-				eg += BishopEG
-			case types.Rook:
-				mg += RookMG
-				eg += RookEG
-			case types.Queen:
-				mg += QueenMG
-				eg += QueenEG
-			}
 
-			// 2. Mobility and Positional Features
-			// We use non-linear tables for mobility and count virtual mobility
-			// (attacks to squares occupied by own or enemy pieces).
-			var attacks, mobility engine.Bitboard
-			switch pt {
-			case types.Knight:
 				attacks = engine.KnightAttacks[sq]
 				mobility = attacks & ^b.Colors[c]
 				mobilityCount := mobility.Count()
@@ -60,7 +47,11 @@ func evaluatePieces(b *engine.Board, c types.Color) (int, int) {
 					mg += KnightOutpostMG
 					eg += KnightOutpostEG
 				}
+
 			case types.Bishop:
+				mg += BishopMG
+				eg += BishopEG
+
 				attacks = engine.GetBishopAttacks(sq, occ)
 				mobility = attacks & ^b.Colors[c]
 				mobilityCount := mobility.Count()
@@ -80,7 +71,17 @@ func evaluatePieces(b *engine.Board, c types.Color) (int, int) {
 					mg += BishopOutpostMG
 					eg += BishopOutpostEG
 				}
+
+				// Long Diagonal Bonus
+				if engine.IsLongDiagonal(sq) {
+					mg += BishopLongDiagonalMG
+					eg += BishopLongDiagonalEG
+				}
+
 			case types.Rook:
+				mg += RookMG
+				eg += RookEG
+
 				attacks = engine.GetRookAttacks(sq, occ)
 				mobility = attacks & ^b.Colors[c]
 				mobilityCount := mobility.Count()
@@ -97,7 +98,6 @@ func evaluatePieces(b *engine.Board, c types.Color) (int, int) {
 				eg += virtual * VirtualMobilityEG
 
 				// File bonuses (Open/Half-Open)
-				file := sq.File()
 				fileBB := engine.FileA << file
 				usPawnsOnFile := (pawns & fileBB) != 0
 				themPawnsOnFile := (enemyPawns & fileBB) != 0
@@ -111,7 +111,33 @@ func evaluatePieces(b *engine.Board, c types.Color) (int, int) {
 						eg += RookHalfOpenFileEG
 					}
 				}
+
+				// 7th Rank Bonus
+				if (c == types.White && rank == 6) || (c == types.Black && rank == 1) {
+					enemyKingSq := b.Pieces[them][types.King].LSB()
+					enemyKingRank := enemyKingSq.Rank()
+					// Bonus applies if enemy king is restricted to the last two ranks
+					if (c == types.White && enemyKingRank >= 6) || (c == types.Black && enemyKingRank <= 1) {
+						mg += RookOn7thMG
+						eg += RookOn7thEG
+					}
+				}
+
+				// Rook Battery Bonus
+				// Check for other rooks on the same file or rank
+				otherRooks := b.Pieces[c][types.Rook] ^ (engine.Bitboard(1) << sq)
+				if otherRooks != 0 {
+					rankBB := engine.Rank1 << (8 * rank)
+					if (otherRooks&fileBB) != 0 || (otherRooks&rankBB) != 0 {
+						mg += RookBatteryMG
+						eg += RookBatteryEG
+					}
+				}
+
 			case types.Queen:
+				mg += QueenMG
+				eg += QueenEG
+
 				attacks = engine.GetQueenAttacks(sq, occ)
 				mobility = attacks & ^b.Colors[c]
 				mobilityCount := mobility.Count()
@@ -130,7 +156,7 @@ func evaluatePieces(b *engine.Board, c types.Color) (int, int) {
 		}
 	}
 
-	// 3. Special Bonuses
+	// 2. Special Bonuses
 	if b.Pieces[c][types.Bishop].Count() >= 2 {
 		mg += BishopPairMG
 		eg += BishopPairEG

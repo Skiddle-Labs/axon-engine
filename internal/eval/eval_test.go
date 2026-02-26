@@ -16,7 +16,7 @@ func withHCE(f func()) {
 	f()
 }
 
-// TestEvaluate_StartingPosition verifies that the starting position is evaluated as 0 (balanced) in HCE.
+// TestEvaluate_StartingPosition verifies that the starting position HCE score includes Tempo.
 func TestEvaluate_StartingPosition(t *testing.T) {
 	withHCE(func() {
 		b := engine.NewBoard()
@@ -24,9 +24,9 @@ func TestEvaluate_StartingPosition(t *testing.T) {
 
 		score := Evaluate(b)
 
-		// In the exact starting position, with symmetrical PSTs and material, the HCE score should be 0.
-		if score != 0 {
-			t.Errorf("Expected HCE score 0 for starting position, got %d", score)
+		// In the starting position, symmetry results in 0, but White gets TempoMG.
+		if score != TempoMG {
+			t.Errorf("Expected HCE score %d (Tempo) for starting position, got %d", TempoMG, score)
 		}
 	})
 }
@@ -53,15 +53,17 @@ func TestEvaluate_NNUE_Loaded(t *testing.T) {
 
 // TestEvaluate_MaterialAdvantage verifies that white having an extra queen results in a positive score.
 func TestEvaluate_MaterialAdvantage(t *testing.T) {
-	b := engine.NewBoard()
-	// Starting position but black is missing a queen
-	b.SetFEN("rn2kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+	withHCE(func() {
+		b := engine.NewBoard()
+		// Starting position but black is missing a queen
+		b.SetFEN("rn2kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
 
-	score := Evaluate(b)
+		score := Evaluate(b)
 
-	if score <= 0 {
-		t.Errorf("Expected positive score when White has material advantage, got %d", score)
-	}
+		if score <= 0 {
+			t.Errorf("Expected positive score when White has material advantage, got %d", score)
+		}
+	})
 }
 
 // TestEvaluate_PawnStructure verifies that doubled pawns are penalized in HCE.

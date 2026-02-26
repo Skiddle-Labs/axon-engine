@@ -20,18 +20,20 @@ var (
 
 // Pawn Structure Weights
 var (
-	PawnDoubledMG   = 2
-	PawnDoubledEG   = -7
-	PawnIsolatedMG  = -14
-	PawnIsolatedEG  = -8
-	PawnSupportedMG = 23
-	PawnSupportedEG = 8
-	PawnPhalanxMG   = 4
-	PawnPhalanxEG   = 5
-	PawnBackwardMG  = -14
-	PawnBackwardEG  = -8
-	PawnPassedMG    = 0
-	PawnPassedEG    = 5
+	PawnDoubledMG          = 2
+	PawnDoubledEG          = -7
+	PawnIsolatedMG         = -14
+	PawnIsolatedEG         = -8
+	PawnSupportedMG        = 23
+	PawnSupportedEG        = 8
+	PawnPhalanxMG          = 4
+	PawnPhalanxEG          = 5
+	PawnBackwardMG         = -14
+	PawnBackwardEG         = -8
+	PawnPassedMG           = 0
+	PawnPassedEG           = 5
+	IsolatedPawnOpenFileMG = -5
+	IsolatedPawnOpenFileEG = -10
 )
 
 // Mobility Weights (Non-linear tables)
@@ -50,25 +52,35 @@ var QueenMobilityEG = [28]int{
 
 // Other Positional Weights
 var (
-	BishopPairMG       = 24
-	BishopPairEG       = 60
-	WeakAttackerMG     = -37
-	WeakAttackerEG     = -28
-	HangingDivisorMG   = 16
-	HangingDivisorEG   = 14
-	KnightOutpostMG    = 20
-	KnightOutpostEG    = 10
-	BishopOutpostMG    = 10
-	BishopOutpostEG    = 5
-	RookOpenFileMG     = 15
-	RookOpenFileEG     = 10
-	RookHalfOpenFileMG = 10
-	RookHalfOpenFileEG = 5
-	ConnectedPassedMG  = 15
-	ConnectedPassedEG  = 25
-	SpaceMG            = 2
-	TrappedPieceMG     = -50
-	TrappedPieceEG     = -80
+	BishopPairMG         = 24
+	BishopPairEG         = 60
+	WeakAttackerMG       = -37
+	WeakAttackerEG       = -28
+	HangingDivisorMG     = 16
+	HangingDivisorEG     = 14
+	KnightOutpostMG      = 20
+	KnightOutpostEG      = 10
+	BishopOutpostMG      = 10
+	BishopOutpostEG      = 5
+	BishopLongDiagonalMG = 15
+	BishopLongDiagonalEG = 10
+	RookOpenFileMG       = 15
+	RookOpenFileEG       = 10
+	RookHalfOpenFileMG   = 10
+	RookHalfOpenFileEG   = 5
+	RookOn7thMG          = 25
+	RookOn7thEG          = 40
+	RookBatteryMG        = 12
+	RookBatteryEG        = 18
+	ConnectedPassedMG    = 15
+	ConnectedPassedEG    = 25
+	SpaceMG              = 2
+	TempoMG              = 15
+	TempoEG              = 5
+	TrappedPieceMG       = -50
+	TrappedPieceEG       = -80
+	MopUpBonus           = 10
+	KingNearPassedPawnEG = 15
 )
 
 // Bishop vs Knight Scaling based on pawn count (0-8 pawns per side)

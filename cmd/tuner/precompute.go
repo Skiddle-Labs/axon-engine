@@ -21,20 +21,24 @@ type PrecomputedFeatures struct {
 	PSTIndices [7][]int
 	Material   [7]int
 
-	PawnDoubled   int
-	PawnIsolated  int
-	PawnSupported int
-	PawnPhalanx   int
-	PawnBackward  int
-	PawnPassed    int // sum of rank*rank for passed pawns
+	PawnDoubled          int
+	PawnIsolated         int
+	IsolatedPawnOpenFile int
+	PawnSupported        int
+	PawnPhalanx          int
+	PawnBackward         int
+	PawnPassed           int // sum of rank*rank for passed pawns
+	ConnectedPassed      int
 
 	KnightMobility [9]int
 	BishopMobility [14]int
 	RookMobility   [15]int
 	QueenMobility  [28]int
 
-	HasBishopPair bool
+	HasBishopPair      bool
+	BishopLongDiagonal int
 
+	KingSq            types.Square
 	KingShieldClose   int
 	KingShieldFar     int
 	KingShieldMissing int
@@ -50,6 +54,12 @@ type PrecomputedFeatures struct {
 	BishopOutpost    int
 	RookOpenFile     int
 	RookHalfOpenFile int
+	RookOn7th        int
+	RookBattery      int
+
+	Space                int
+	TrappedPiece         int
+	KingNearPassedPawnEG int
 }
 
 // PrecomputeEntries converts raw entries into precomputed entries.
@@ -105,18 +115,22 @@ func Precompute(entry Entry) PrecomputedEntry {
 }
 
 func calculatePhase(b *engine.Board) (int, int, int) {
-	phase := eval.TotalPhase
-	phase -= (b.Pieces[types.White][types.Knight].Count() + b.Pieces[types.Black][types.Knight].Count()) * eval.KnightPhase
-	phase -= (b.Pieces[types.White][types.Bishop].Count() + b.Pieces[types.Black][types.Bishop].Count()) * eval.BishopPhase
-	phase -= (b.Pieces[types.White][types.Rook].Count() + b.Pieces[types.Black][types.Rook].Count()) * eval.RookPhase
-	phase -= (b.Pieces[types.White][types.Queen].Count() + b.Pieces[types.Black][types.Queen].Count()) * eval.QueenPhase
+	phase := 0
+	phase += b.Pieces[types.White][types.Knight].Count() * eval.KnightPhase
+	phase += b.Pieces[types.Black][types.Knight].Count() * eval.KnightPhase
+	phase += b.Pieces[types.White][types.Bishop].Count() * eval.BishopPhase
+	phase += b.Pieces[types.Black][types.Bishop].Count() * eval.BishopPhase
+	phase += b.Pieces[types.White][types.Rook].Count() * eval.RookPhase
+	phase += b.Pieces[types.Black][types.Rook].Count() * eval.RookPhase
+	phase += b.Pieces[types.White][types.Queen].Count() * eval.QueenPhase
+	phase += b.Pieces[types.Black][types.Queen].Count() * eval.QueenPhase
 
-	if phase < 0 {
-		phase = 0
+	if phase > eval.TotalPhase {
+		phase = eval.TotalPhase
 	}
 
-	egW := phase
-	mgW := eval.TotalPhase - phase
+	mgW := phase
+	egW := eval.TotalPhase - phase
 	return mgW, egW, phase
 }
 
@@ -153,6 +167,11 @@ func extractFeatures(b *engine.Board, c types.Color) PrecomputedFeatures {
 		}
 		if isIsolated {
 			f.PawnIsolated++
+
+			// Penalty for isolated pawn on an open file
+			if (enemyPawns & (engine.FileA << file)) == 0 {
+				f.IsolatedPawnOpenFile++
+			}
 		}
 
 		// Connected pawns (protected by another pawn)
@@ -261,6 +280,11 @@ func extractFeatures(b *engine.Board, c types.Color) PrecomputedFeatures {
 				bonus = (7 - rank) * (7 - rank)
 			}
 			f.PawnPassed += bonus
+
+			// Connected passed pawns
+			if supported || phalanx {
+				f.ConnectedPassed++
+			}
 		}
 	}
 
@@ -295,6 +319,10 @@ func extractFeatures(b *engine.Board, c types.Color) PrecomputedFeatures {
 				f.QueenMobility[count]++
 			}
 
+			if count == 0 {
+				f.TrappedPiece++
+			}
+
 			// Virtual mobility (pressure on occupied squares)
 			f.VirtualMobility += (attacks & occ).Count()
 
@@ -308,7 +336,11 @@ func extractFeatures(b *engine.Board, c types.Color) PrecomputedFeatures {
 				if isOutpostPre(b, c, sq) {
 					f.BishopOutpost++
 				}
+				if engine.IsLongDiagonal(sq) {
+					f.BishopLongDiagonal++
+				}
 			case types.Rook:
+				rank := sq.Rank()
 				file := sq.File()
 				fileBB := engine.FileA << file
 				usPawnsOnFile := (pawns & fileBB) != 0
@@ -321,6 +353,24 @@ func extractFeatures(b *engine.Board, c types.Color) PrecomputedFeatures {
 						f.RookHalfOpenFile++
 					}
 				}
+
+				// 7th Rank Bonus
+				if (c == types.White && rank == 6) || (c == types.Black && rank == 1) {
+					enemyKingSq := b.Pieces[them][types.King].LSB()
+					enemyKingRank := enemyKingSq.Rank()
+					if (c == types.White && enemyKingRank >= 6) || (c == types.Black && enemyKingRank <= 1) {
+						f.RookOn7th++
+					}
+				}
+
+				// Rook Battery
+				otherRooks := b.Pieces[c][types.Rook] ^ (engine.Bitboard(1) << sq)
+				if otherRooks != 0 {
+					rankBB := engine.Rank1 << (8 * rank)
+					if (otherRooks&fileBB) != 0 || (otherRooks&rankBB) != 0 {
+						f.RookBattery++
+					}
+				}
 			}
 		}
 	}
@@ -329,11 +379,30 @@ func extractFeatures(b *engine.Board, c types.Color) PrecomputedFeatures {
 		f.HasBishopPair = true
 	}
 
+	// Space
+	enemyPawnAttacks := engine.Bitboard(0)
+	if them == types.White {
+		enemyPawnAttacks |= (enemyPawns & ^engine.FileA) << 7
+		enemyPawnAttacks |= (enemyPawns & ^engine.FileH) << 9
+	} else {
+		enemyPawnAttacks |= (enemyPawns & ^engine.FileA) >> 9
+		enemyPawnAttacks |= (enemyPawns & ^engine.FileH) >> 7
+	}
+	var spaceMask engine.Bitboard
+	if c == types.White {
+		spaceMask = engine.Rank2 | engine.Rank3 | engine.Rank4
+	} else {
+		spaceMask = engine.Rank7 | engine.Rank6 | engine.Rank5
+	}
+	spaceMask &= (engine.FileC | engine.FileD | engine.FileE | engine.FileF)
+	f.Space = (spaceMask & ^enemyPawnAttacks).Count()
+
 	// King
 	kingBB := b.Pieces[c][types.King]
 	f.Material[types.King] = kingBB.Count()
 	if !kingBB.IsEmpty() {
 		sq := kingBB.LSB()
+		f.KingSq = sq
 		f.PSTIndices[types.King] = append(f.PSTIndices[types.King], getPSTIndex(sq, c))
 
 		// King Safety (Pawn Shield)
@@ -390,6 +459,26 @@ func extractFeatures(b *engine.Board, c types.Color) PrecomputedFeatures {
 				if dist < 4 {
 					f.PawnStorm += (4 - dist)
 				}
+			}
+		}
+
+		// King proximity to passed pawns
+		// Support our own
+		pCopy := b.Pieces[c][types.Pawn]
+		for pCopy != 0 {
+			psq := pCopy.PopLSB()
+			if isPassedPre(b, c, psq) {
+				dist := engine.ManhattanDistance(sq, psq)
+				f.KingNearPassedPawnEG += (7 - dist)
+			}
+		}
+		// Stop enemy
+		eCopy := b.Pieces[them][types.Pawn]
+		for eCopy != 0 {
+			psq := eCopy.PopLSB()
+			if isPassedPre(b, them, psq) {
+				dist := engine.ManhattanDistance(sq, psq)
+				f.KingNearPassedPawnEG += (7 - dist)
 			}
 		}
 
@@ -456,13 +545,50 @@ func getPSTIndex(sq types.Square, c types.Color) int {
 
 // Evaluate computes the score using precomputed features and current evaluation parameters.
 func (pe *PrecomputedEntry) Evaluate() int {
+	// Tempo bonus
+	tempoMg, tempoEg := 0, 0
+	if pe.SideToMove == types.White {
+		tempoMg = eval.TempoMG
+		tempoEg = eval.TempoEG
+	} else {
+		tempoMg = -eval.TempoMG
+		tempoEg = -eval.TempoEG
+	}
+
 	mgWhite, egWhite := pe.evaluateColor(types.White)
 	mgBlack, egBlack := pe.evaluateColor(types.Black)
 
-	mgScore := mgWhite - mgBlack
-	egScore := egWhite - egBlack
+	mgScore := mgWhite - mgBlack + tempoMg
+	egScore := egWhite - egBlack + tempoEg
 
 	score := (mgScore*pe.MgW + egScore*pe.EgW) / eval.TotalPhase
+
+	// Mop-up
+	if score > 300 || score < -300 {
+		if pe.EgW > 14 { // Endgame weight > 14 corresponds to phase < 10
+			bonus := 0
+			us := types.White
+			them := types.Black
+			if score < 0 {
+				us = types.Black
+				them = types.White
+			}
+
+			enemyKingSq := pe.Features[them].KingSq
+			ourKingSq := pe.Features[us].KingSq
+
+			bonus += engine.CenterDistance(enemyKingSq) * eval.MopUpBonus
+			dist := engine.ManhattanDistance(ourKingSq, enemyKingSq)
+			bonus += (14 - dist) * (eval.MopUpBonus / 2)
+
+			bonus = (bonus * pe.EgW) / eval.TotalPhase
+			if score < 0 {
+				score -= bonus
+			} else {
+				score += bonus
+			}
+		}
+	}
 
 	if pe.SideToMove == types.Black {
 		return -score
@@ -507,6 +633,10 @@ func (pe *PrecomputedEntry) evaluateColor(c types.Color) (int, int) {
 	eg += f.PawnBackward * eval.PawnBackwardEG
 	mg += f.PawnPassed * eval.PawnPassedMG
 	eg += f.PawnPassed * eval.PawnPassedEG
+	mg += f.IsolatedPawnOpenFile * eval.IsolatedPawnOpenFileMG
+	eg += f.IsolatedPawnOpenFile * eval.IsolatedPawnOpenFileEG
+	mg += f.ConnectedPassed * eval.ConnectedPassedMG
+	eg += f.ConnectedPassed * eval.ConnectedPassedEG
 
 	// Mobility
 	for i := 0; i < 9; i++ {
@@ -529,11 +659,17 @@ func (pe *PrecomputedEntry) evaluateColor(c types.Color) (int, int) {
 	mg += f.VirtualMobility * eval.VirtualMobilityMG
 	eg += f.VirtualMobility * eval.VirtualMobilityEG
 
+	mg += f.TrappedPiece * eval.TrappedPieceMG
+	eg += f.TrappedPiece * eval.TrappedPieceEG
+
 	// Other
 	if f.HasBishopPair {
 		mg += eval.BishopPairMG
 		eg += eval.BishopPairEG
 	}
+
+	mg += f.BishopLongDiagonal * eval.BishopLongDiagonalMG
+	eg += f.BishopLongDiagonal * eval.BishopLongDiagonalEG
 
 	mg += f.KnightOutpost * eval.KnightOutpostMG
 	eg += f.KnightOutpost * eval.KnightOutpostEG
@@ -543,6 +679,12 @@ func (pe *PrecomputedEntry) evaluateColor(c types.Color) (int, int) {
 	eg += f.RookOpenFile * eval.RookOpenFileEG
 	mg += f.RookHalfOpenFile * eval.RookHalfOpenFileMG
 	eg += f.RookHalfOpenFile * eval.RookHalfOpenFileEG
+	mg += f.RookOn7th * eval.RookOn7thMG
+	eg += f.RookOn7th * eval.RookOn7thEG
+	mg += f.RookBattery * eval.RookBatteryMG
+	eg += f.RookBattery * eval.RookBatteryEG
+
+	mg += f.Space * eval.SpaceMG
 
 	// King Safety
 	mg += f.KingShieldClose * eval.KingShieldClose
@@ -551,6 +693,8 @@ func (pe *PrecomputedEntry) evaluateColor(c types.Color) (int, int) {
 
 	mg += f.PawnStorm * eval.PawnStormMG
 	eg += f.PawnStorm * eval.PawnStormEG
+
+	eg += f.KingNearPassedPawnEG * eval.KingNearPassedPawnEG
 
 	attackerCount, attackerWeight := 0, 0
 	for pt := types.Knight; pt <= types.Queen; pt++ {
@@ -635,4 +779,36 @@ func isOutpostPre(b *engine.Board, c types.Color, sq types.Square) bool {
 	}
 
 	return true
+}
+
+// isPassedPre is a helper for precomputation.
+func isPassedPre(b *engine.Board, c types.Color, sq types.Square) bool {
+	file := sq.File()
+	rank := sq.Rank()
+	enemyPawns := b.Pieces[c^1][types.Pawn]
+
+	frontMask := engine.Bitboard(0)
+	if c == types.White {
+		for r := rank + 1; r <= 7; r++ {
+			frontMask.Set(types.NewSquare(file, r))
+			if file > 0 {
+				frontMask.Set(types.NewSquare(file-1, r))
+			}
+			if file < 7 {
+				frontMask.Set(types.NewSquare(file+1, r))
+			}
+		}
+	} else {
+		for r := rank - 1; r >= 0; r-- {
+			frontMask.Set(types.NewSquare(file, r))
+			if file > 0 {
+				frontMask.Set(types.NewSquare(file-1, r))
+			}
+			if file < 7 {
+				frontMask.Set(types.NewSquare(file+1, r))
+			}
+		}
+	}
+
+	return (frontMask & enemyPawns).IsEmpty()
 }

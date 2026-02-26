@@ -144,6 +144,10 @@ func (e *Engine) Search(maxDepth int) engine.Move {
 			defer wg.Done()
 			bCopy := *e.Board
 			helper := NewEngine(&bCopy)
+			helper.StartTime = e.StartTime
+			helper.TimeLimit = e.TimeLimit
+			helper.SoftLimit = e.SoftLimit
+			helper.NodesLimit = e.NodesLimit
 			helper.HistoryTable = e.HistoryTable
 			helper.CaptureHistory = e.CaptureHistory
 			helper.CounterMoves = e.CounterMoves
@@ -420,10 +424,16 @@ func (e *Engine) printInfo(depth, score int, bestMove engine.Move, multipv int) 
 
 	if score > MateScore-500 {
 		mateIn := (MateScore - score + 1) / 2
+		if mateIn == 0 {
+			mateIn = 1
+		}
 		fmt.Printf("info depth %d multipv %d score mate %d%s nodes %d nps %d hashfull %d time %d pv %s\n",
 			depth, multipv, mateIn, wdlStr, nodes, nps, hashfull, int(duration*1000), pvStr)
 	} else if score < -MateScore+500 {
 		mateIn := (MateScore + score + 1) / 2
+		if mateIn == 0 {
+			mateIn = 1
+		}
 		fmt.Printf("info depth %d multipv %d score mate -%d%s nodes %d nps %d hashfull %d time %d pv %s\n",
 			depth, multipv, mateIn, wdlStr, nodes, nps, hashfull, int(duration*1000), pvStr)
 	} else {
@@ -444,8 +454,8 @@ func CalculateWDL(score, ply int) (win, draw, loss int) {
 	drawProb := math.Exp(-0.002*math.Abs(s)) * (0.3 + 0.5*math.Min(1.0, float64(ply)/100.0))
 
 	// Normalize to 1000
-	win = int(winProb * (1.0 - drawProb) * 1000)
-	draw = int(drawProb * 1000)
+	win = int(math.Round(winProb * (1.0 - drawProb) * 1000))
+	draw = int(math.Round(drawProb * 1000))
 	loss = 1000 - win - draw
 
 	return

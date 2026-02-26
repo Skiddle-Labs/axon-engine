@@ -7,7 +7,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -24,9 +23,9 @@ type Entry struct {
 }
 
 var (
-	dataFile = flag.String("file", "", "Path to the training data file (EPD format)")
-	maxIters = flag.Int("iterations", 0, "Number of iterations (0 for until no improvement)")
-	threads  = flag.Int("threads", 0, "Number of threads to use for MSE calculation (defaults to 80% of CPUs)")
+	dataFile = flag.String("file", "quiet-labeled.epd", "Path to the training data file (EPD format)")
+	maxIters = flag.Int("iterations", 1000, "Number of iterations")
+	threads  = flag.Int("threads", 1, "Number of threads to use for MSE calculation")
 	saveFile = flag.String("save", "tuned_params.txt", "Path to save the optimized parameters")
 	method   = flag.String("method", "local", "Optimization method (local or spsa)")
 	lossType = flag.String("loss", "mse", "Loss function to minimize (mse or logloss)")
@@ -68,12 +67,8 @@ func main() {
 
 	fmt.Printf("Loaded %d positions for tuning.\n", len(entries))
 
-	if *threads <= 0 {
-		t := int(float64(runtime.NumCPU()) * 0.8)
-		if t < 1 {
-			t = 1
-		}
-		*threads = t
+	if *threads < 1 {
+		*threads = 1
 	}
 	fmt.Printf("Using %d threads.\n", *threads)
 
@@ -92,10 +87,8 @@ func main() {
 	}
 
 	// Step 2: Run the optimization loop.
+	// Step 2: Run the optimization loop.
 	if strings.ToLower(*method) == "spsa" {
-		if *maxIters == 0 {
-			*maxIters = 1000
-		}
 		RunSPSA(precomputed, bestK, *maxIters)
 	} else {
 		RunTuning(precomputed, bestK, *maxIters)
@@ -429,6 +422,8 @@ func getTunableParams() ([]*int, []string) {
 	names = append(names, "PawnBackwardMG", "PawnBackwardEG")
 	params = append(params, &eval.PawnPassedMG, &eval.PawnPassedEG)
 	names = append(names, "PawnPassedMG", "PawnPassedEG")
+	params = append(params, &eval.IsolatedPawnOpenFileMG, &eval.IsolatedPawnOpenFileEG)
+	names = append(names, "IsolatedPawnOpenFileMG", "IsolatedPawnOpenFileEG")
 
 	// Mobility
 	for i := range eval.KnightMobilityMG {
@@ -474,6 +469,10 @@ func getTunableParams() ([]*int, []string) {
 	names = append(names, "WeakAttackerMG", "WeakAttackerEG")
 	params = append(params, &eval.HangingDivisorMG, &eval.HangingDivisorEG)
 	names = append(names, "HangingDivisorMG", "HangingDivisorEG")
+	params = append(params, &eval.TempoMG, &eval.TempoEG)
+	names = append(names, "TempoMG", "TempoEG")
+	params = append(params, &eval.SpaceMG)
+	names = append(names, "SpaceMG")
 
 	// Positional
 	params = append(params, &eval.KnightOutpostMG, &eval.KnightOutpostEG)
@@ -484,6 +483,18 @@ func getTunableParams() ([]*int, []string) {
 	names = append(names, "RookOpenFileMG", "RookOpenFileEG")
 	params = append(params, &eval.RookHalfOpenFileMG, &eval.RookHalfOpenFileEG)
 	names = append(names, "RookHalfOpenFileMG", "RookHalfOpenFileEG")
+	params = append(params, &eval.RookOn7thMG, &eval.RookOn7thEG)
+	names = append(names, "RookOn7thMG", "RookOn7thEG")
+	params = append(params, &eval.RookBatteryMG, &eval.RookBatteryEG)
+	names = append(names, "RookBatteryMG", "RookBatteryEG")
+	params = append(params, &eval.BishopLongDiagonalMG, &eval.BishopLongDiagonalEG)
+	names = append(names, "BishopLongDiagonalMG", "BishopLongDiagonalEG")
+	params = append(params, &eval.ConnectedPassedMG, &eval.ConnectedPassedEG)
+	names = append(names, "ConnectedPassedMG", "ConnectedPassedEG")
+	params = append(params, &eval.TrappedPieceMG, &eval.TrappedPieceEG)
+	names = append(names, "TrappedPieceMG", "TrappedPieceEG")
+	params = append(params, &eval.MopUpBonus, &eval.KingNearPassedPawnEG)
+	names = append(names, "MopUpBonus", "KingNearPassedPawnEG")
 
 	// PSTs
 	typeNames := []string{"None", "Pawn", "Knight", "Bishop", "Rook", "Queen", "King"}

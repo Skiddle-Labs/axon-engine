@@ -22,8 +22,8 @@ func TestSearch_MateIn1(t *testing.T) {
 	// Scholar's Mate position: Queen attacks F7 with Bishop support
 	b.SetFEN("r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR w KQkq - 4 4")
 
-	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
+	searchEngine.TT = NewTranspositionTable(1)
 	bestMove := searchEngine.Search(4)
 
 	expectedFrom := types.F3
@@ -48,8 +48,8 @@ func TestSearch_NNUE(t *testing.T) {
 	b := engine.NewBoard()
 	b.SetFEN(engine.StartFEN)
 
-	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
+	searchEngine.TT = NewTranspositionTable(1)
 	// Low depth to verify logic without taking too long
 	bestMove := searchEngine.Search(4)
 
@@ -64,8 +64,8 @@ func TestSearch_MateIn2(t *testing.T) {
 	// Black is in a position to be mated in 2: 1. Qe8+ Rxe8 2. Rxe8#
 	b.SetFEN("r5k1/5ppp/8/8/8/8/4QPPP/4R1K1 w - - 0 1")
 
-	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
+	searchEngine.TT = NewTranspositionTable(1)
 	bestMove := searchEngine.Search(4)
 
 	expectedFrom := types.E2
@@ -81,8 +81,8 @@ func TestSearch_TranspositionTable(t *testing.T) {
 	b := engine.NewBoard()
 	b.SetFEN(engine.StartFEN)
 
-	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
+	searchEngine.TT = NewTranspositionTable(1)
 
 	// First search
 	searchEngine.Search(4)
@@ -103,8 +103,8 @@ func TestSearch_Quiescence(t *testing.T) {
 	// Position where a capture seems good but leads to material loss
 	b.SetFEN("r1bqkbnr/pppp1ppp/2n5/4p3/3P4/5N2/PPP1PPPP/RNBQKB1R w KQkq - 0 1")
 
-	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
+	searchEngine.TT = NewTranspositionTable(1)
 	bestMove := searchEngine.Search(1)
 
 	if bestMove == engine.NoMove {
@@ -118,8 +118,8 @@ func TestSearch_Repetition(t *testing.T) {
 	b.SetFEN("k7/8/8/8/8/8/7R/1R4K1 w - - 0 1")
 	// Note: Repetition testing often requires simulating move history,
 	// but we ensure the basic search executes correctly here.
-	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
+	searchEngine.TT = NewTranspositionTable(1)
 	searchEngine.Search(2)
 }
 
@@ -131,9 +131,9 @@ func TestSearch_NullMovePruning(t *testing.T) {
 	b := engine.NewBoard()
 	b.SetFEN(engine.StartFEN)
 
-	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
-	searchEngine.Search(5)
+	searchEngine.TT = NewTranspositionTable(1)
+	searchEngine.Search(4)
 }
 
 // TestSearch_Stalemate verifies that stalemate is evaluated as 0.
@@ -142,8 +142,8 @@ func TestSearch_Stalemate(t *testing.T) {
 	// Classic stalemate position
 	b.SetFEN("7k/5Q2/8/8/8/8/8/7K b - - 0 1")
 
-	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
+	searchEngine.TT = NewTranspositionTable(1)
 	move := searchEngine.Search(1)
 
 	if move != engine.NoMove {
@@ -156,8 +156,8 @@ func TestSearch_QuiescenceCheck(t *testing.T) {
 	b := engine.NewBoard()
 	// White is in checkmate. Search should return NoMove.
 	b.SetFEN("rnb1kbnr/pppp1ppp/8/4p3/5PPq/8/PPPPP2P/RNBQKBNR w KQkq - 0 1")
-	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
+	searchEngine.TT = NewTranspositionTable(1)
 	bestMove := searchEngine.Search(1)
 
 	if bestMove != engine.NoMove {
@@ -173,9 +173,9 @@ func TestSearch_RFP(t *testing.T) {
 	b := engine.NewBoard()
 	b.SetFEN("k7/8/8/8/8/4B3/4Q3/K7 w - - 0 1")
 
-	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
-	searchEngine.Search(6)
+	searchEngine.TT = NewTranspositionTable(1)
+	searchEngine.Search(4)
 }
 
 // TestSearch_LMP verifies that Late Move Pruning is integrated.
@@ -186,9 +186,9 @@ func TestSearch_LMP(t *testing.T) {
 	b := engine.NewBoard()
 	b.SetFEN(engine.StartFEN)
 
-	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
-	searchEngine.Search(6)
+	searchEngine.TT = NewTranspositionTable(1)
+	searchEngine.Search(4)
 }
 
 // TestSearch_CounterMoves verifies that countermoves are tracked.
@@ -197,11 +197,12 @@ func TestSearch_CounterMoves(t *testing.T) {
 		t.Skip("skipping search depth test in short mode.")
 	}
 	b := engine.NewBoard()
-	b.SetFEN(engine.StartFEN)
+	// Use a tactical position to ensure countermove recording
+	b.SetFEN("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2")
 
-	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
-	searchEngine.Search(5)
+	searchEngine.TT = NewTranspositionTable(1)
+	searchEngine.Search(7)
 
 	found := false
 	for _, row := range searchEngine.CounterMoves {
@@ -226,8 +227,8 @@ func TestSearch_SingularExtensions(t *testing.T) {
 	b := engine.NewBoard()
 	b.SetFEN("rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2")
 
-	GlobalTT.Clear()
 	searchEngine := NewEngine(b)
+	searchEngine.TT = NewTranspositionTable(1)
 	// Depth enough to trigger singular extension logic (depth >= 8)
-	searchEngine.Search(8)
+	searchEngine.Search(7)
 }

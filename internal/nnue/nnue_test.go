@@ -44,38 +44,40 @@ func TestEvaluate_Basic(t *testing.T) {
 	var accW, accB types.Accumulator
 
 	// Test 1: Zero accumulators
-	// Output = (0/255 + 640) / 64 = 10
+	// internalScore = (0 / 255) + 640 = 640
+	// score = 640 * 400 / 16320 = 15
 	score := Evaluate(&accW, &accB, types.White)
-	if score != 10 {
-		t.Errorf("Expected score 10 for zero accumulators, got %d", score)
+	if score != 15 {
+		t.Errorf("Expected score 15 for zero accumulators, got %d", score)
 	}
 
 	// Test 2: Active neuron
 	// Set first neuron of 'us' (White) to 10
 	// SCReLU(10) = 10^2 = 100
-	// Output = (100 * 255 / 255 + 640) / 64 = (100 + 640) / 64 = 740 / 64 = 11
+	// internalScore = (100 * 255 / 255) + 640 = 740
+	// score = 740 * 400 / 16320 = 18
 	accW[0] = 10
 	score = Evaluate(&accW, &accB, types.White)
-	if score != 11 {
-		t.Errorf("Expected score 11 for active neuron, got %d", score)
+	if score != 18 {
+		t.Errorf("Expected score 18 for active neuron, got %d", score)
 	}
 
 	// Test 3: Side to move flip
 	// If side is Black, 'us' is accB and 'them' is accW
-	// accB is zero, so Output = (0 + 640) / 64 = 10
+	// accB is zero, so Output = 15
 	score = Evaluate(&accW, &accB, types.Black)
-	if score != 10 {
-		t.Errorf("Expected score 10 for Black perspective with empty accB, got %d", score)
+	if score != 15 {
+		t.Errorf("Expected score 15 for Black perspective with empty accB, got %d", score)
 	}
 
-	// Test 4: Maximum activation
-	// val = 200 (should be clamped to 127)
-	// 127^2 = 16129
-	// Output = (16129 * 255 / 255 + 640) / 64 = (16129 + 640) / 64 = 16769 / 64 = 262
+	// Test 4: Large activation
+	// val = 200 (not clamped, SCReLU = 40000)
+	// internalScore = (40000 * 255 / 255) + 640 = 40640
+	// score = 40640 * 400 / 16320 = 996
 	accW[0] = 200
 	score = Evaluate(&accW, &accB, types.White)
-	if score != 262 {
-		t.Errorf("Expected score 262 for clamped maximum activation, got %d", score)
+	if score != 996 {
+		t.Errorf("Expected score 996 for large activation, got %d", score)
 	}
 }
 

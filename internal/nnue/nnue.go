@@ -78,9 +78,20 @@ func LoadNetwork(path string) error {
 	}
 	defer file.Close()
 
-	net, err := readNetwork(file)
+	info, err := file.Stat()
 	if err != nil {
 		return err
+	}
+
+	// Verify file size. Axon's 768 -> 256 architecture expects ~385 KB.
+	// Stockfish networks are much larger (20-80 MB) and use a different architecture.
+	if info.Size() > 1024*1024 {
+		return fmt.Errorf("network file too large (%d bytes); Stockfish networks are not compatible with Axon's HalfKP 768->256 architecture", info.Size())
+	}
+
+	net, err := readNetwork(file)
+	if err != nil {
+		return fmt.Errorf("failed to load %s: %w", path, err)
 	}
 
 	CurrentNetwork = net
@@ -90,6 +101,10 @@ func LoadNetwork(path string) error {
 
 // LoadNetworkFromBytes loads the NNUE weights and biases from a byte slice.
 func LoadNetworkFromBytes(data []byte) error {
+	if len(data) > 1024*1024 {
+		return fmt.Errorf("network data too large (%d bytes); likely an incompatible architecture", len(data))
+	}
+
 	net, err := readNetwork(bytes.NewReader(data))
 	if err != nil {
 		return err
@@ -106,23 +121,23 @@ func readNetwork(r io.Reader) (*Network, error) {
 	// Load Feature Weights
 	for i := 0; i < types.InputFeatures; i++ {
 		if err := binary.Read(r, binary.LittleEndian, &net.FeatureWeights[i]); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("error reading feature weights at index %d: %w", i, err)
 		}
 	}
 
 	// Load Feature Biases
 	if err := binary.Read(r, binary.LittleEndian, &net.FeatureBiases); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error reading feature biases: %w", err)
 	}
 
 	// Load Output Weights
 	if err := binary.Read(r, binary.LittleEndian, &net.OutputWeights); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error reading output weights: %w", err)
 	}
 
 	// Load Output Bias
 	if err := binary.Read(r, binary.LittleEndian, &net.OutputBias); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error reading output bias: %w", err)
 	}
 
 	return net, nil
